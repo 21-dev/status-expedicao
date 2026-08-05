@@ -35,7 +35,7 @@ body[data-theme="dark"] .carrier-logo{background:#1a315a;color:#a8c4ff}.carrier-
 .matrix-header{height:var(--header-height,50px);background:#172235;color:#f3f6fb;text-transform:uppercase;font-size:var(--header-font,8px);font-weight:800;text-align:center;line-height:1.15;flex-direction:column;word-break:break-word}
 .matrix-header span{max-width:100%;overflow:hidden;text-overflow:ellipsis}.matrix-header small{display:block;color:#aebbd0;font-size:calc(var(--header-font,8px) - 1px);margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.matrix-title{width:100%;display:flex;align-items:center;justify-content:center;gap:4px;min-width:0}.matrix-title span{min-width:0;white-space:nowrap}.matrix-carrier-logo{flex:0 0 auto;width:19px;height:19px;border-radius:5px;display:block;object-fit:contain;box-shadow:0 2px 5px #0004}
 .matrix-hour{justify-content:flex-start;font-weight:800;background:#f8fafc}.matrix-total{font-weight:900;background:#f3f6fa}.matrix-value{font-weight:800;transition:.15s}
-.matrix-value.empty{background:#fff;color:#a5adba}.matrix-value.good{background:#d8f1df;color:#14532d}.matrix-value.warn{background:#fde8a6;color:#7c4a03}.matrix-value.bad{background:#ffb0a5;color:#8f1d16}.matrix-value.has-age-alert{position:relative;box-shadow:inset 0 0 0 2px #f5b400}
+.matrix-value.empty{background:#fff;color:#a5adba}.matrix-value.good{background:#d8f1df;color:#14532d}.matrix-value.warn{background:#fde8a6;color:#7c4a03}.matrix-value.bad{background:#ffb0a5;color:#8f1d16}.matrix-value.has-age-alert{position:relative;box-shadow:inset 0 0 0 2px #f5b400}.matrix-volume-count{margin-left:3px;font-size:.82em;font-weight:700;opacity:.78;white-space:nowrap}
 .age-alert{display:inline-grid;place-items:center;flex:0 0 auto;width:17px;height:17px;margin-right:5px;border-radius:50%;background:#f5b400;color:#332400;font-size:11px;line-height:1;font-weight:1000;box-shadow:0 2px 5px #a66d0038}
 body[data-theme="dark"] .matrix-hour,body[data-theme="dark"] .matrix-total{background:#121e31;color:#e8eef9}
 body[data-theme="dark"] .matrix-value.empty{background:var(--panel);color:#66758d}body[data-theme="dark"] .matrix-value.good{background:#275c38;color:#e4f8e9}body[data-theme="dark"] .matrix-value.warn{background:#a37210;color:#fff6d7}body[data-theme="dark"] .matrix-value.bad{background:#b83c34;color:#fff}
@@ -55,11 +55,13 @@ body[data-theme="dark"] .rank-number{background:#1c3158;color:#a9c5ff}.carrier-v
 .bar-value{position:absolute;left:50%;top:-20px;transform:translateX(-50%);font-size:8px;font-weight:800;color:var(--ink);white-space:nowrap}.bar-label{text-align:center;font-size:8px;font-weight:800;color:var(--muted);line-height:1.25;overflow:hidden}
 .chart-legend{display:flex;justify-content:center;gap:20px;padding-top:14px;color:var(--muted);font-size:9px}.chart-legend span{display:flex;align-items:center;gap:6px}.chart-legend i{width:10px;height:10px;border-radius:3px}.chart-legend .orders{background:#3b82f6}.chart-legend .volumes{background:#06b6d4}
 .conference-screen .intro{margin-bottom:10px;min-height:38px}.conference-card .card-head{padding:10px 14px}.conference-card .matrix-legend{padding-top:7px}.header-export{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.productivity-today{overflow:hidden;margin-bottom:15px}.productivity-head{padding:16px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:linear-gradient(120deg,#17233a,#28477b);color:#fff}.productivity-head small{display:block;color:#a9bad5;font-size:8px;text-transform:uppercase;letter-spacing:.1em;font-weight:800}.productivity-head h2{margin:5px 0 0;font-size:18px}.productivity-date{font-size:12px;font-weight:800}.productivity-segments{display:grid;grid-template-columns:1fr 1fr}.productivity-segment{padding:16px 18px}.productivity-segment+ .productivity-segment{border-left:1px solid var(--line)}.segment-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.segment-title strong{font-size:14px}.segment-title span{font-size:8px;color:var(--muted);text-transform:uppercase}.shift-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.shift-card{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}.shift-card>strong{display:block;font-size:10px;margin-bottom:10px}.shift-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.shift-metrics small,.shift-metrics b{display:block}.shift-metrics small{font-size:7px;line-height:1.25;text-transform:uppercase;color:var(--muted);min-height:18px}.shift-metrics b{font-size:15px;margin-top:4px}.history-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:15px}.history-card{padding:13px 14px}.history-card h3{font-size:11px;margin:0 0 10px}.history-line{display:grid;grid-template-columns:36px 1fr 1fr;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:8px}.history-line strong{color:var(--blue)}.history-line span:last-child{text-align:right;color:var(--muted)}.productivity-chart-card{overflow:hidden}.wave-chart{padding:14px 18px 16px}.wave-chart svg{width:100%;height:300px;display:block}.wave-grid{stroke:var(--line);stroke-width:1}.wave-axis{fill:var(--muted);font-size:9px}.wave-line{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.wave-dot{stroke:var(--panel);stroke-width:2}.wave-legend{display:flex;justify-content:center;flex-wrap:wrap;gap:15px;margin-top:8px;color:var(--muted);font-size:9px}.wave-legend span{display:flex;align-items:center;gap:6px}.wave-legend i{width:18px;height:3px;border-radius:2px}.productivity-empty{padding:60px;text-align:center;color:var(--muted);font-size:10px}
 @media(max-width:650px){.pending-head.enriched,.pending-row.enriched{grid-template-columns:.8fr 1.5fr 55px}.carrier-name{display:none}.data-head,.data-row{grid-template-columns:1.2fr .5fr .8fr}.theme-toggle{width:38px;height:38px}}
 @media(max-width:560px){.dispatch-card{grid-template-columns:auto 1fr}.dispatch-time{grid-column:2;text-align:left}.dispatch-info strong{font-size:14px}}
 @media(max-width:1150px){.kpis{grid-template-columns:repeat(2,1fr)}}@media(max-width:430px){.kpis{grid-template-columns:1fr}.kpi:last-child{grid-column:auto}}
 @media(max-width:1050px){.triaged-analysis-grid{grid-template-columns:1fr}}@media(max-width:520px){.carrier-list-head,.carrier-list-row{grid-template-columns:minmax(135px,1fr) 58px 58px}.triaged-analysis-grid{display:block}.triaged-analysis-grid>.card{margin-top:15px}}
 @media(max-width:900px){.header-export span{display:none}.header-export{width:39px;height:39px;padding:0;justify-content:center}}@media(max-width:620px){.matrix-wrap{padding:5px}.matrix-cell{padding:2px}.matrix-legend{gap:10px;font-size:8px}}
+@media(max-width:1050px){.history-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.productivity-segments{grid-template-columns:1fr}.productivity-segment+ .productivity-segment{border-left:0;border-top:1px solid var(--line)}.history-grid{grid-template-columns:1fr 1fr}.shift-metrics b{font-size:12px}}@media(max-width:480px){.shift-grid,.history-grid{grid-template-columns:1fr}.productivity-head{align-items:flex-start;gap:10px}.productivity-date{font-size:10px}}
   </style>
 </head>
 <body>
@@ -70,10 +72,11 @@ body[data-theme="dark"] .rank-number{background:#1c3158;color:#a9c5ff}.carrier-v
       <nav>
         <button class="nav-item active" data-page="dashboard"><span>▦</span>Visão geral</button>
         <button class="nav-item" data-page="triados"><span>□</span>Triados <b id="nav-triados">0</b></button>
+        <button class="nav-item" data-page="produtividade"><span>⌁</span>Produtividade</button>
         <button class="nav-item" data-page="faturamento"><span>≡</span>Pendentes de faturamento</button>
         <button class="nav-item" data-page="transportadoras"><span>⇢</span>Transportadoras</button>
         <button class="nav-item" data-page="pin"><span>⌖</span>Solicitação PIN</button>
-        <button class="nav-item" data-page="conferencia-b2c"><span>◷</span>Conferência B2C</button>
+        <button class="nav-item" data-page="conferencia-b2c"><span>◷</span>Conferência Doca B2C</button>
         <button class="nav-item" data-page="conferencia-b2b"><span>◷</span>Conferência B2B</button>
       </nav>
       <p class="nav-title">GESTÃO</p>
@@ -96,29 +99,31 @@ body[data-theme="dark"] .rank-number{background:#1c3158;color:#a9c5ff}.carrier-v
           <div class="intro"><div><p>Acompanhamento da expedição pelo arquivo WMS</p><small id="file-info">Importe a exportação operacional para calcular os indicadores</small></div><div class="actions"><button class="btn secondary" id="export-summary">↓ Exportar resumo</button><label class="btn primary">＋ Importar CSV<input class="file-input" id="csv-input" type="file" accept=".csv,text/csv"></label></div></div>
 
           <div class="kpis">
-            <article class="kpi blue"><div><span>Triados</span><i>□</i></div><strong id="kpi-triados">0</strong><small>4 status operacionais</small></article>
+            <article class="kpi blue"><div><span>Triados</span><i>□</i></div><strong id="kpi-triados">0</strong><small>Séries 17, 14, 11 e vazia</small></article>
             <article class="kpi green"><div><span>Expedidos hoje</span><i>⇢</i></div><strong id="kpi-expedidos">0</strong><small>Processados na data atual</small></article>
-            <article class="kpi orange"><div><span>Sem PDF</span><i>≡</i></div><strong id="kpi-sem-pdf">0</strong><small>Série vazia · 3 status</small></article>
+            <article class="kpi orange"><div><span>Sem PDF</span><i>≡</i></div><strong id="kpi-sem-pdf">0</strong><small>Série vazia e 11 · inclui quebra</small></article>
             <article class="kpi cyan"><div><span>Volumes hoje</span><i>◇</i></div><strong id="kpi-volumes">0</strong><small>Mesmo total de volumes dos triados</small></article>
           </div>
 
           <article class="card dispatch-card"><div class="dispatch-icon">⇢</div><div class="dispatch-info"><small>Última expedição processada</small><strong id="dispatch-carrier-card">Aguardando importação</strong></div><div class="dispatch-time"><small>Processado em</small><strong id="dispatch-time-card">—</strong></div></article>
 
           <div class="summary-grid">
-            <article class="card summary blue"><div class="card-head"><div><h2>Triados</h2><p>Conferência concluída, enviado para faturamento, faturado e coleta iniciada</p></div></div><div class="summary-values" id="summary-triados"></div></article>
-            <article class="card summary orange"><div class="card-head"><div><h2>Sem PDF</h2><p>Série vazia nos três status de triagem</p></div></div><div class="summary-values" id="summary-sem-pdf"></div></article>
+            <article class="card summary blue"><div class="card-head"><div><h2>Triados</h2><p>Inclui Série 11 e status AG Resolução de Quebra</p></div></div><div class="summary-values" id="summary-triados"></div></article>
+            <article class="card summary orange"><div class="card-head"><div><h2>Sem PDF</h2><p>Série vazia e 11 · inclui AG Resolução de Quebra · exceto FedEx</p></div></div><div class="summary-values" id="summary-sem-pdf"></div></article>
             <article class="card summary slate"><div class="card-head"><div><h2>Expedidos D1</h2><p id="summary-d1-subtitle">Última data processada diferente da atual</p></div></div><div class="summary-values" id="summary-ontem"></div></article>
             <article class="card summary green"><div class="card-head"><div><h2>Expedidos hoje</h2><p>Processado na data atual</p></div></div><div class="summary-values" id="summary-hoje"></div></article>
           </div>
         </section>
 
-        <section class="page" id="page-triados"><div class="intro"><div><p>Pedidos triados pelo arquivo operacional</p><small>Detalhamento consolidado por transportadora</small></div></div><article class="card summary blue"><div class="card-head"><div><h2>Resumo de triados</h2><p>Conferência concluída, enviado para faturamento, faturado e coleta iniciada</p></div></div><div class="summary-values" id="summary-triados-page"></div></article><div class="triaged-analysis-grid"><article class="card"><div class="card-head"><div><h2>Ranking por transportadora</h2><p>Ordenado da maior para a menor quantidade de volumes</p></div></div><div class="carrier-list" id="triaged-carrier-list"></div></article><article class="card"><div class="card-head"><div><h2>Pedidos e volumes por transportadora</h2><p>Comparativo em barras verticais</p></div></div><div class="bar-chart-wrap" id="triaged-carrier-chart"></div></article></div></section>
+        <section class="page" id="page-triados"><div class="intro"><div><p>Pedidos triados pelo arquivo operacional</p><small>Detalhamento consolidado por transportadora</small></div></div><article class="card summary blue"><div class="card-head"><div><h2>Resumo de triados</h2><p>Séries 17, 14, 11 e vazia · inclui AG Resolução de Quebra</p></div></div><div class="summary-values" id="summary-triados-page"></div></article><div class="triaged-analysis-grid"><article class="card"><div class="card-head"><div><h2>Ranking por transportadora</h2><p>Ordenado da maior para a menor quantidade de volumes</p></div></div><div class="carrier-list" id="triaged-carrier-list"></div></article><article class="card"><div class="card-head"><div><h2>Pedidos e volumes por transportadora</h2><p>Comparativo em barras verticais</p></div></div><div class="bar-chart-wrap" id="triaged-carrier-chart"></div></article></div></section>
+
+        <section class="page" id="page-produtividade"><div class="intro"><div><p>Produtividade de pesagem</p><small>Soma de produtos e pedidos pesados por hora · 1º turno 06h–14h59 · 2º turno 15h–23h59</small></div></div><div id="productivity-content"></div></section>
 
         <section class="page placeholder" id="page-faturamento"><div class="empty-icon">≡</div><h2>Pendentes de faturamento</h2><p>Esta área será detalhada na próxima etapa do projeto.</p></section>
         <section class="page placeholder" id="page-transportadoras"><div class="empty-icon">⇢</div><h2>Transportadoras</h2><p>Esta área será detalhada na próxima etapa do projeto.</p></section>
-        <section class="page" id="page-pin"><div class="intro"><div><p>Solicitações PIN</p><small>Pedidos separados por carga para os estados atendidos</small></div></div><div class="pin-groups" id="pin-table-page"></div></section>
-        <section class="page conference-screen" id="page-conferencia-b2c"><div class="intro"><div><p>Pendentes de conferência · B2C</p><small>Série 17 · serviço da transportadora · carga vazia · dimensionamento automático</small></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2C por dia e hora</h2><p>Quantidade de pedidos por serviço da transportadora</p></div></div><div class="matrix-wrap" id="b2c-table"></div></article></section>
-        <section class="page conference-screen" id="page-conferencia-b2b"><div class="intro"><div><p>Pendentes de conferência · B2B</p><small>Séries 14 e vazia · transportadora · carga vazia · dimensionamento automático</small></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2B por dia e hora</h2><p>Quantidade de pedidos por transportadora</p></div></div><div class="matrix-wrap" id="b2b-table"></div></article></section>
+        <section class="page" id="page-pin"><div class="intro"><div><p>Solicitações PIN</p><small>Somente FL Brasil · pedidos separados por carga para os estados atendidos</small></div></div><div class="pin-groups" id="pin-table-page"></div></section>
+        <section class="page conference-screen" id="page-conferencia-b2c"><div class="intro"><div><p>Conferência Doca · B2C</p><small>Série 17 · transportadora · carga vazia · dimensionamento automático</small></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência Doca B2C por dia e hora</h2><p>Quantidade de pedidos por transportadora</p></div></div><div class="matrix-wrap" id="b2c-table"></div></article></section>
+        <section class="page conference-screen" id="page-conferencia-b2b"><div class="intro"><div><p>Pendentes de conferência · B2B</p><small>Séries 14 e vazia · transportadora · carga vazia · pedidos (volumes)</small></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2B por dia e hora</h2><p>Quantidade de pedidos e volumes por transportadora</p></div></div><div class="matrix-wrap" id="b2b-table"></div></article></section>
         <section class="page placeholder" id="page-relatorios"><div class="empty-icon">↗</div><h2>Relatórios</h2><p>Use “Exportar resumo” para baixar os indicadores atuais.</p></section>
         <section class="page placeholder" id="page-configuracoes"><div class="empty-icon">⚙</div><h2>Configurações</h2><p>O painel funciona localmente e não envia seus dados para servidores externos.</p></section>
       </div>
@@ -142,7 +147,7 @@ function createEmptyMetrics() {
     recordCount: 0, fileName: "", importedAt: "", triagedSummary: zeroSummary(),
     withoutPdfSummary: zeroSummary(), dispatchedToday: zeroSummary(), dispatchedYesterday: zeroSummary(),
     b2cHourly: [], b2bHourly: [], pinDetails: [], lastDispatch: null, d1Date: "",
-    triagedByCarrier: []
+    triagedByCarrier: [], productivity: { days: [] }
   };
 }
 
@@ -174,15 +179,19 @@ function forEachCsvRow(text, callback) {
 function calculateMetrics(csvText, fileName) {
   const metrics = createEmptyMetrics();
   const billingStatuses = new Set(["ENVIADO PARA FATURAMENTO", "FATURADO", "COLETA INICIADA"]);
-  const triagedStatuses = new Set(["CONFERÊNCIA CONCLUÍDA", "ENVIADO PARA FATURAMENTO", "FATURADO", "COLETA INICIADA"]);
-  const hourlyStatuses = new Set(["CONFERÊNCIA CONCLUÍDA", "ENVIADO PARA FATURAMENTO", "FATURADO"]);
+  const breakStatuses = new Set(["AG RESOLUCAO DE QUEBRA", "AG RESOLUCAO QUEBRA"]);
+  const triagedStatuses = new Set(["CONFERENCIA CONCLUIDA", "ENVIADO PARA FATURAMENTO", "FATURADO", "COLETA INICIADA", ...breakStatuses]);
+  const withoutPdfStatuses = new Set([...billingStatuses, ...breakStatuses]);
+  const hourlyStatuses = new Set(["CONFERENCIA CONCLUIDA", "ENVIADO PARA FATURAMENTO", "FATURADO"]);
   const allowedSeries = new Set(["17", "14", ""]);
+  const triagedSeries = new Set(["17", "14", "11", ""]);
   const pinStates = new Set(["AC", "AM", "AP", "RO", "RR"]);
   const seen = {
     triaged: new Set(), processedToday: new Set(), withoutPdf: new Set(), pin: new Set(),
     triagedSummary: new Set(), withoutPdfSummary: new Set(), today: new Set()
   };
   const b2c = new Map(), b2b = new Map();
+  const productivityMap = new Map();
   const triagedCarriers = new Map();
   const processedByDate = new Map();
   let indexes = null;
@@ -204,8 +213,7 @@ function calculateMetrics(csvText, fileName) {
         order: column("Pedido de Venda"), series: column("Série"), status: column("Status da Nota Fiscal"),
         processed: column("Processado"), processedAt: column("Processado em"), volumes: column("Qtde. de Volumes"),
         uf: column("UF Destinatário"), products: column("Qtde. Total de Produto"),
-        load: column("Carga"), weighedAt: column("Pesado em"), carrier: column("Transportadora"),
-        carrierService: column("Serviço da Transportadora")
+        load: column("Carga"), weighedAt: column("Pesado em"), carrier: column("Transportadora")
       };
       if (Object.values(indexes).some(index => index < 0)) throw new Error("O arquivo não contém todas as colunas obrigatórias.");
       return;
@@ -214,17 +222,21 @@ function calculateMetrics(csvText, fileName) {
     const order = (values[indexes.order] || "").trim();
     if (!order) return;
     const series = (values[indexes.series] || "").trim();
-    const status = (values[indexes.status] || "").trim().toUpperCase();
+    const status = normalizeHeader(values[indexes.status] || "").toUpperCase();
     const processedAt = (values[indexes.processedAt] || "").trim();
     const products = Number(String(values[indexes.products] || "0").replace(",", ".")) || 0;
     const volumes = Number(String(values[indexes.volumes] || "0").replace(",", ".")) || 0;
     const carrier = (values[indexes.carrier] || "").trim();
-    const carrierService = (values[indexes.carrierService] || "").trim();
     const load = (values[indexes.load] || "").trim();
+    const weighedAt = (values[indexes.weighedAt] || "").trim();
     const isBillingStatus = billingStatuses.has(status);
+    const isBreakStatus = status.startsWith("AG") && status.includes("RESOLUCAO") && status.includes("QUEBRA");
+    const isTriagedStatus = triagedStatuses.has(status) || isBreakStatus;
+    const isWithoutPdfStatus = withoutPdfStatuses.has(status) || isBreakStatus;
     const isFedex = normalizeHeader(carrier).includes("fedex");
+    const isFlBrasil = normalizeHeader(carrier).includes("fl brasil");
 
-    if (allowedSeries.has(series) && triagedStatuses.has(status) && !seen.triaged.has(order)) {
+    if (triagedSeries.has(series) && isTriagedStatus && !seen.triaged.has(order)) {
       seen.triaged.add(order);
       addSummary(metrics.triagedSummary, seen.triagedSummary, order, products, volumes);
       const carrierName = carrier || "Transportadora não informada";
@@ -252,11 +264,11 @@ function calculateMetrics(csvText, fileName) {
         addSummary(dayData.summary, dayData.seen, order, products, volumes);
       }
     }
-    if (series === "" && isBillingStatus && !isFedex) {
+    if ((series === "" || series === "11") && isWithoutPdfStatus && !isFedex) {
       seen.withoutPdf.add(order); addSummary(metrics.withoutPdfSummary, seen.withoutPdfSummary, order, products, volumes);
     }
     const uf = (values[indexes.uf] || "").trim().toUpperCase();
-    if (isBillingStatus && pinStates.has(uf)) {
+    if (isBillingStatus && pinStates.has(uf) && isFlBrasil) {
       if (!seen.pin.has(order)) {
         seen.pin.add(order);
         metrics.pinDetails.push({ order, uf, load: load || "Sem carga" });
@@ -280,7 +292,21 @@ function calculateMetrics(csvText, fileName) {
       }
     }
 
-    const weighedAt = (values[indexes.weighedAt] || "").trim();
+    const productivityMatch = weighedAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
+    if (productivityMatch) {
+      const hour = Number(productivityMatch[4]);
+      const segment = series === "17" ? "b2c" : (["", "11", "14"].includes(series) ? "b2b" : null);
+      const shift = hour >= 6 && hour <= 14 ? "shift1" : hour >= 15 && hour <= 23 ? "shift2" : null;
+      if (segment && shift) {
+        const date = productivityMatch[1] + "/" + productivityMatch[2] + "/" + productivityMatch[3];
+        if (!productivityMap.has(date)) productivityMap.set(date, { b2c: { shift1: new Map(), shift2: new Map() }, b2b: { shift1: new Map(), shift2: new Map() } });
+        const hourly = productivityMap.get(date)[segment][shift];
+        if (!hourly.has(hour)) hourly.set(hour, new Map());
+        const orders = hourly.get(hour);
+        if (!orders.has(order)) orders.set(order, products);
+      }
+    }
+
     if (hourlyStatuses.has(status) && (values[indexes.load] || "").trim() === "" && weighedAt) {
       const match = weighedAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
       if (match) {
@@ -288,12 +314,12 @@ function calculateMetrics(csvText, fileName) {
         const weighedUtc = Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
         const daysOld = Math.floor((todayUtc - weighedUtc) / 86400000);
         const target = series === "17" ? b2c : (series === "14" || series === "" ? b2b : null);
-        const descriptor = series === "17" ? (carrierService || "Serviço não informado") : (carrier || "Transportadora não informada");
+        const descriptor = carrier || "Transportadora não informada";
         if (target) {
           const bucketKey = label + "||" + descriptor;
-          if (!target.has(bucketKey)) target.set(bucketKey, { orders: new Set(), alert: false });
+          if (!target.has(bucketKey)) target.set(bucketKey, { orders: new Map(), alert: false });
           const bucket = target.get(bucketKey);
-          bucket.orders.add(order);
+          if (!bucket.orders.has(order)) bucket.orders.set(order, volumes);
           if ((series === "17" && daysOld >= 1) || (series !== "17" && daysOld >= 2)) bucket.alert = true;
         }
       }
@@ -302,7 +328,7 @@ function calculateMetrics(csvText, fileName) {
 
   const buckets = (map) => Array.from(map, ([key, bucket]) => {
     const parts = key.split("||");
-    return { label: parts[0], descriptor: parts.slice(1).join("||"), orders: bucket.orders.size, alert: bucket.alert };
+    return { label: parts[0], descriptor: parts.slice(1).join("||"), orders: bucket.orders.size, volumes: Array.from(bucket.orders.values()).reduce((sum, value) => sum + value, 0), alert: bucket.alert };
   }).sort((a, b) => {
     const value = (label) => {
       const match = label.match(/^(\d{2})\/(\d{2}) · (\d{2})h$/);
@@ -324,6 +350,35 @@ function calculateMetrics(csvText, fileName) {
   }
   metrics.b2cHourly = buckets(b2c);
   metrics.b2bHourly = buckets(b2b);
+  const emptyShift = (startHour, endHour) => ({ products: 0, orders: 0, activeHours: 0, productsPerHour: 0, ordersPerHour: 0, hourly: Array.from({ length: endHour - startHour + 1 }, (_, index) => ({ hour: startHour + index, products: 0, orders: 0 })) });
+  const summarizeShift = (hourMap, startHour, endHour) => {
+    const result = emptyShift(startHour, endHour);
+    if (!hourMap) return result;
+    result.hourly = result.hourly.map(point => {
+      const orders = hourMap.get(point.hour) || new Map();
+      const products = Array.from(orders.values()).reduce((sum, value) => sum + value, 0);
+      return { hour: point.hour, products, orders: orders.size };
+    });
+    result.products = result.hourly.reduce((sum, point) => sum + point.products, 0);
+    result.orders = result.hourly.reduce((sum, point) => sum + point.orders, 0);
+    result.activeHours = result.hourly.filter(point => point.orders > 0).length;
+    result.productsPerHour = result.activeHours ? result.products / result.activeHours : 0;
+    result.ordersPerHour = result.activeHours ? result.orders / result.activeHours : 0;
+    return result;
+  };
+  const utcDateKey = (stamp) => {
+    const date = new Date(stamp);
+    return String(date.getUTCDate()).padStart(2, "0") + "/" + String(date.getUTCMonth() + 1).padStart(2, "0") + "/" + date.getUTCFullYear();
+  };
+  metrics.productivity.days = Array.from({ length: 5 }, (_, offset) => {
+    const stamp = todayUtc - offset * 86400000;
+    const date = utcDateKey(stamp), source = productivityMap.get(date);
+    return {
+      date, isToday: offset === 0,
+      b2c: { shift1: summarizeShift(source && source.b2c.shift1, 6, 14), shift2: summarizeShift(source && source.b2c.shift2, 15, 23) },
+      b2b: { shift1: summarizeShift(source && source.b2b.shift1, 6, 14), shift2: summarizeShift(source && source.b2b.shift2, 15, 23) }
+    };
+  });
   metrics.fileName = fileName;
   metrics.importedAt = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   return metrics;
@@ -361,7 +416,7 @@ function carrierShort(value) {
 
 function carrierVisual(value) {
   const normalized = normalizeHeader(value);
-  if (normalized.includes("shoppe") || normalized.includes("shopee")) return { short: "SH", color: "#ee4d2d" };
+  if (normalized.includes("shoppe") || normalized.includes("shopee") || normalized.includes("shps tecnologia")) return { short: "SH", color: "#ee4d2d" };
   if (normalized.includes("fedex")) return { short: "FX", color: "#4d148c", accent: "#ff6600" };
   if (normalized.includes("patrus")) return { short: "P", color: "#c62828" };
   if (normalized.includes("fl brasil")) return { short: "FL", color: "#1769aa" };
@@ -389,7 +444,7 @@ function matrixHeaderHtml(descriptor) {
     escapeHtml(main) + '</span></div><small>' + escapeHtml(detail) + '</small></div>';
 }
 
-function pendingMatrixHtml(data) {
+function pendingMatrixHtml(data, showVolumes) {
   if (!data.length) return '<div class="pending-empty">Importe o arquivo CSV para visualizar os horários.</div>';
   const descriptors = Array.from(new Set(data.map(item => item.descriptor))).sort((a, b) => a.localeCompare(b, "pt-BR"));
   const labels = Array.from(new Set(data.map(item => item.label)));
@@ -410,34 +465,37 @@ function pendingMatrixHtml(data) {
 
   labels.forEach(label => {
     const hourLabel = dates.size === 1 ? (label.split(" · ")[1] || label) : label;
-    let rowTotal = 0;
+    let rowTotal = 0, rowVolumes = 0;
     cells += '<div class="matrix-cell matrix-hour" title="' + escapeHtml(label) + '">' + escapeHtml(hourLabel) + '</div>';
     descriptors.forEach(descriptor => {
       const item = values.get(label + "||" + descriptor);
       const value = item ? item.orders : 0;
-      rowTotal += value;
+      const volumeValue = item ? item.volumes : 0;
+      rowTotal += value; rowVolumes += volumeValue;
       const hasAlert = Boolean(item && item.alert);
       const alert = hasAlert ? '<span class="age-alert" aria-hidden="true">!</span>' : '';
-      cells += '<div class="matrix-cell matrix-value ' + heatClass(value) + (hasAlert ? ' has-age-alert' : '') + '"' + (hasAlert ? ' title="Pendência antiga sem carga" aria-label="Pendência antiga sem carga: ' + fmt(value) + ' pedidos"' : '') + '>' + alert + fmt(value) + '</div>';
+      const volumesHtml = showVolumes ? '<span class="matrix-volume-count">(' + fmt(volumeValue) + ')</span>' : '';
+      cells += '<div class="matrix-cell matrix-value ' + heatClass(value) + (hasAlert ? ' has-age-alert' : '') + '"' + (hasAlert ? ' title="Pendência antiga sem carga" aria-label="Pendência antiga sem carga: ' + fmt(value) + ' pedidos e ' + fmt(volumeValue) + ' volumes"' : '') + '>' + alert + fmt(value) + volumesHtml + '</div>';
     });
-    cells += '<div class="matrix-cell matrix-total">' + fmt(rowTotal) + '</div>';
+    cells += '<div class="matrix-cell matrix-total">' + fmt(rowTotal) + (showVolumes ? '<span class="matrix-volume-count">(' + fmt(rowVolumes) + ')</span>' : '') + '</div>';
   });
 
   cells += '<div class="matrix-cell matrix-total">TOTAL</div>';
-  let grandTotal = 0;
+  let grandTotal = 0, grandVolumes = 0;
   descriptors.forEach(descriptor => {
-    const total = labels.reduce((sum, label) => {
+    const totals = labels.reduce((sum, label) => {
       const item = values.get(label + "||" + descriptor);
-      return sum + (item ? item.orders : 0);
-    }, 0);
-    grandTotal += total;
-    cells += '<div class="matrix-cell matrix-total">' + fmt(total) + '</div>';
+      sum.orders += item ? item.orders : 0; sum.volumes += item ? item.volumes : 0;
+      return sum;
+    }, { orders: 0, volumes: 0 });
+    grandTotal += totals.orders; grandVolumes += totals.volumes;
+    cells += '<div class="matrix-cell matrix-total">' + fmt(totals.orders) + (showVolumes ? '<span class="matrix-volume-count">(' + fmt(totals.volumes) + ')</span>' : '') + '</div>';
   });
-  cells += '<div class="matrix-cell matrix-total">' + fmt(grandTotal) + '</div>';
+  cells += '<div class="matrix-cell matrix-total">' + fmt(grandTotal) + (showVolumes ? '<span class="matrix-volume-count">(' + fmt(grandVolumes) + ')</span>' : '') + '</div>';
 
   return '<div class="matrix-grid" style="grid-template-columns:' + columns + ';--cell-height:' + cellHeight +
     'px;--header-height:' + headerHeight + 'px;--cell-font:' + cellFont + 'px;--header-font:' + headerFont + 'px">' + cells + '</div>' +
-    '<div class="matrix-legend"><span><i class="zero"></i>Sem pedidos</span><span><i class="good"></i>1 a 10</span><span><i class="warn"></i>11 a 30</span><span><i class="bad"></i>Acima de 30</span><span><b class="alert-mark">!</b>Pendência antiga</span></div>';
+    '<div class="matrix-legend">' + (showVolumes ? '<span><b>Formato:</b> pedidos (volumes)</span>' : '') + '<span><i class="zero"></i>Sem pedidos</span><span><i class="good"></i>1 a 10</span><span><i class="warn"></i>11 a 30</span><span><i class="bad"></i>Acima de 30</span><span><b class="alert-mark">!</b>Pendência antiga</span></div>';
 }
 
 function groupPinDetails(data) {
@@ -483,6 +541,53 @@ function triagedCarrierChartHtml(data) {
   return '<div class="bar-chart">' + groups + '</div><div class="chart-legend"><span><i class="orders"></i>Pedidos</span><span><i class="volumes"></i>Volumes</span></div>';
 }
 
+function decimalFmt(value) {
+  return Number(value || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+}
+
+function productivityShiftHtml(title, data) {
+  return '<div class="shift-card"><strong>' + title + '</strong><div class="shift-metrics">' +
+    '<div><small>Total de produtos</small><b>' + fmt(data.products) + '</b></div>' +
+    '<div><small>Média produtos/h</small><b>' + decimalFmt(data.productsPerHour) + '</b></div>' +
+    '<div><small>Pedidos/h</small><b>' + decimalFmt(data.ordersPerHour) + '</b></div></div></div>';
+}
+
+function productivityWaveHtml(days) {
+  const chronological = days.slice().reverse();
+  const series = [
+    { label: "B2C · 1º turno", color: "#2563eb", values: chronological.map(day => day.b2c.shift1.productsPerHour) },
+    { label: "B2C · 2º turno", color: "#06b6d4", values: chronological.map(day => day.b2c.shift2.productsPerHour) },
+    { label: "B2B · 1º turno", color: "#8b5cf6", values: chronological.map(day => day.b2b.shift1.productsPerHour) },
+    { label: "B2B · 2º turno", color: "#f59e0b", values: chronological.map(day => day.b2b.shift2.productsPerHour) }
+  ];
+  const maximum = Math.max(1, ...series.flatMap(item => item.values));
+  const left = 62, right = 970, top = 22, bottom = 245, width = right - left, height = bottom - top;
+  const x = index => left + index * (width / Math.max(1, chronological.length - 1));
+  const y = value => bottom - value / maximum * height;
+  const grid = Array.from({ length: 5 }, (_, index) => {
+    const value = maximum * (4 - index) / 4, lineY = top + index * height / 4;
+    return '<line class="wave-grid" x1="' + left + '" y1="' + lineY + '" x2="' + right + '" y2="' + lineY + '"/><text class="wave-axis" x="54" y="' + (lineY + 3) + '" text-anchor="end">' + decimalFmt(value) + '</text>';
+  }).join("");
+  const lines = series.map(item => {
+    const points = item.values.map((value, index) => x(index) + ',' + y(value)).join(' ');
+    const dots = item.values.map((value, index) => '<circle class="wave-dot" cx="' + x(index) + '" cy="' + y(value) + '" r="4" fill="' + item.color + '"><title>' + item.label + ': ' + decimalFmt(value) + ' produtos/h</title></circle>').join('');
+    return '<polyline class="wave-line" stroke="' + item.color + '" points="' + points + '"/>' + dots;
+  }).join("");
+  const labels = chronological.map((day, index) => '<text class="wave-axis" x="' + x(index) + '" y="270" text-anchor="middle">' + day.date.slice(0, 5) + (day.isToday ? ' · hoje' : '') + '</text>').join("");
+  return '<div class="wave-chart"><svg viewBox="0 0 1000 285" role="img" aria-label="Evolução da média de produtos por hora nos últimos cinco dias">' + grid + lines + labels + '</svg><div class="wave-legend">' + series.map(item => '<span><i style="background:' + item.color + '"></i>' + item.label + '</span>').join('') + '</div></div>';
+}
+
+function productivityHtml(productivity) {
+  if (!productivity.days.length) return '<div class="card productivity-empty">Importe o CSV para visualizar a produtividade.</div>';
+  const today = productivity.days[0];
+  const segment = (title, series, rule) => '<div class="productivity-segment"><div class="segment-title"><strong>' + title + '</strong><span>' + rule + '</span></div><div class="shift-grid">' + productivityShiftHtml('1º turno · 06h–14h59', series.shift1) + productivityShiftHtml('2º turno · 15h–23h59', series.shift2) + '</div></div>';
+  const history = productivity.days.slice(1).map(day => {
+    const line = (label, data) => '<div class="history-line"><strong>' + label + '</strong><span>' + fmt(data.products) + ' prod.</span><span>' + decimalFmt(data.productsPerHour) + '/h · ' + decimalFmt(data.ordersPerHour) + ' ped/h</span></div>';
+    return '<article class="card history-card"><h3>' + day.date + '</h3>' + line('B2C T1', day.b2c.shift1) + line('B2C T2', day.b2c.shift2) + line('B2B T1', day.b2b.shift1) + line('B2B T2', day.b2b.shift2) + '</article>';
+  }).join("");
+  return '<article class="card productivity-today"><div class="productivity-head"><div><small>Produtividade do dia</small><h2>Produtos pesados por turno</h2></div><div class="productivity-date">' + today.date + '</div></div><div class="productivity-segments">' + segment('B2C', today.b2c, 'Série 17') + segment('B2B', today.b2b, 'Séries vazia, 11 e 14') + '</div></article><div class="history-grid">' + history + '</div><article class="card productivity-chart-card"><div class="card-head"><div><h2>Evolução da produtividade</h2><p>Média de produtos por hora · cada linha representa um segmento e turno</p></div></div>' + productivityWaveHtml(productivity.days) + '</article>';
+}
+
 function render(metrics) {
   $("#kpi-triados").textContent = fmt(metrics.triaged);
   $("#kpi-expedidos").textContent = fmt(metrics.processedToday);
@@ -499,9 +604,10 @@ function render(metrics) {
     ? "Última data processada: " + metrics.d1Date
     : "Última data processada diferente da atual";
   $("#summary-hoje").innerHTML = summaryHtml(metrics.dispatchedToday);
-  $("#b2c-table").innerHTML = pendingMatrixHtml(metrics.b2cHourly);
-  $("#b2b-table").innerHTML = pendingMatrixHtml(metrics.b2bHourly);
+  $("#b2c-table").innerHTML = pendingMatrixHtml(metrics.b2cHourly, false);
+  $("#b2b-table").innerHTML = pendingMatrixHtml(metrics.b2bHourly, true);
   $("#pin-table-page").innerHTML = pinHtml(metrics.pinDetails);
+  $("#productivity-content").innerHTML = productivityHtml(metrics.productivity);
   $("#file-info").textContent = metrics.fileName
     ? metrics.fileName + " · " + fmt(metrics.recordCount) + " registros · importado às " + metrics.importedAt
     : "Importe a exportação operacional para calcular os indicadores";
@@ -621,8 +727,8 @@ function exportDashboardImage() {
   text("PROCESSADO EM", 1680, 430, 13, "#a9bad5", 800, "right");
   text(currentMetrics.lastDispatch ? currentMetrics.lastDispatch.processedAt : "—", 1680, 480, 22, "#ffffff", 700, "right");
 
-  summaryCard("Triados", "Quatro status operacionais", currentMetrics.triagedSummary, 70, 570, colors.blue);
-  summaryCard("Sem PDF", "Série vazia, exceto FedEx", currentMetrics.withoutPdfSummary, 905, 570, colors.orange);
+  summaryCard("Triados", "Inclui Série 11 e resolução de quebra", currentMetrics.triagedSummary, 70, 570, colors.blue);
+  summaryCard("Sem PDF", "Série vazia e 11, exceto FedEx", currentMetrics.withoutPdfSummary, 905, 570, colors.orange);
   summaryCard("Expedidos D1", currentMetrics.d1Date ? "Última data processada: " + currentMetrics.d1Date : "Última data diferente da atual", currentMetrics.dispatchedYesterday, 70, 810, "#64748b");
   summaryCard("Expedidos hoje", "Processados na data atual", currentMetrics.dispatchedToday, 905, 810, colors.green);
 
@@ -679,8 +785,8 @@ function exportDetailPageImage(pageId) {
     return result + "…";
   };
   const pageTitles = {
-    "page-triados": "Triados por transportadora", "page-pin": "Solicitação PIN",
-    "page-conferencia-b2c": "Pendentes de conferência · B2C",
+    "page-triados": "Triados por transportadora", "page-produtividade": "Produtividade", "page-pin": "Solicitação PIN",
+    "page-conferencia-b2c": "Conferência Doca · B2C",
     "page-conferencia-b2b": "Pendentes de conferência · B2B",
     "page-faturamento": "Pendentes de faturamento", "page-transportadoras": "Transportadoras",
     "page-relatorios": "Relatórios", "page-configuracoes": "Configurações"
@@ -692,6 +798,7 @@ function exportDetailPageImage(pageId) {
   drawText(new Date().toLocaleString("pt-BR"), 1730, 70, 15, colors.muted, 600, "right");
 
   if (pageId === "page-conferencia-b2c" || pageId === "page-conferencia-b2b") {
+    const showVolumes = pageId === "page-conferencia-b2b";
     const data = pageId === "page-conferencia-b2c" ? currentMetrics.b2cHourly : currentMetrics.b2bHourly;
     const descriptors = Array.from(new Set(data.map(item => item.descriptor))).sort((a, b) => a.localeCompare(b, "pt-BR"));
     const labels = Array.from(new Set(data.map(item => item.label)));
@@ -718,24 +825,75 @@ function exportDetailPageImage(pageId) {
     cell(columns - 1, 0, "TOTAL", colors.header, "#fff", 800);
     labels.forEach((label, rowIndex) => {
       cell(0, rowIndex + 1, label, colors.panel, colors.text, 800);
-      let rowTotal = 0;
+      let rowTotal = 0, rowVolumes = 0;
       descriptors.forEach((descriptor, columnIndex) => {
         const item = values.get(label + "||" + descriptor);
-        const value = item ? item.orders : 0; rowTotal += value;
-        cell(columnIndex + 1, rowIndex + 1, fmt(value), value === 0 ? colors.panel : value <= 10 ? colors.green : value <= 30 ? colors.yellow : colors.red, value === 0 ? colors.muted : colors.text, 800, item && item.alert);
+        const value = item ? item.orders : 0, volumeValue = item ? item.volumes : 0;
+        rowTotal += value; rowVolumes += volumeValue;
+        cell(columnIndex + 1, rowIndex + 1, fmt(value) + (showVolumes ? " (" + fmt(volumeValue) + ")" : ""), value === 0 ? colors.panel : value <= 10 ? colors.green : value <= 30 ? colors.yellow : colors.red, value === 0 ? colors.muted : colors.text, 800, item && item.alert);
       });
-      cell(columns - 1, rowIndex + 1, fmt(rowTotal), colors.panel, colors.text, 900);
+      cell(columns - 1, rowIndex + 1, fmt(rowTotal) + (showVolumes ? " (" + fmt(rowVolumes) + ")" : ""), colors.panel, colors.text, 900);
     });
     cell(0, rows - 1, "TOTAL", colors.panel, colors.text, 900);
-    let grandTotal = 0;
+    let grandTotal = 0, grandVolumes = 0;
     descriptors.forEach((descriptor, index) => {
-      const total = labels.reduce((sum, label) => {
+      const totals = labels.reduce((sum, label) => {
         const item = values.get(label + "||" + descriptor);
-        return sum + (item ? item.orders : 0);
-      }, 0);
-      grandTotal += total; cell(index + 1, rows - 1, fmt(total), colors.panel, colors.text, 900);
+        sum.orders += item ? item.orders : 0; sum.volumes += item ? item.volumes : 0;
+        return sum;
+      }, { orders: 0, volumes: 0 });
+      grandTotal += totals.orders; grandVolumes += totals.volumes;
+      cell(index + 1, rows - 1, fmt(totals.orders) + (showVolumes ? " (" + fmt(totals.volumes) + ")" : ""), colors.panel, colors.text, 900);
     });
-    cell(columns - 1, rows - 1, fmt(grandTotal), colors.panel, colors.text, 900);
+    cell(columns - 1, rows - 1, fmt(grandTotal) + (showVolumes ? " (" + fmt(grandVolumes) + ")" : ""), colors.panel, colors.text, 900);
+  } else if (pageId === "page-produtividade") {
+    const days = currentMetrics.productivity.days, today = days[0];
+    const shiftBox = (title, data, x, y, width) => {
+      rect(x, y, width, 105, colors.panel, colors.line, 12);
+      drawText(title, x + 16, y + 21, 13, colors.text, 800);
+      [["PRODUTOS", fmt(data.products)], ["PRODUTOS/H", decimalFmt(data.productsPerHour)], ["PEDIDOS/H", decimalFmt(data.ordersPerHour)]].forEach((item, index) => {
+        const metricX = x + 16 + index * (width - 32) / 3;
+        drawText(item[0], metricX, y + 51, 9, colors.muted, 800);
+        drawText(item[1], metricX, y + 79, 18, colors.text, 900);
+      });
+    };
+    if (today) {
+      drawText("HOJE · " + today.date, 70, 205, 15, colors.blue, 900);
+      drawText("B2C · SÉRIE 17", 70, 243, 14, colors.text, 800);
+      shiftBox("1º turno · 06h–14h59", today.b2c.shift1, 70, 265, 805);
+      shiftBox("2º turno · 15h–23h59", today.b2c.shift2, 895, 265, 805);
+      drawText("B2B · SÉRIES VAZIA, 11 E 14", 70, 405, 14, colors.text, 800);
+      shiftBox("1º turno · 06h–14h59", today.b2b.shift1, 70, 427, 805);
+      shiftBox("2º turno · 15h–23h59", today.b2b.shift2, 895, 427, 805);
+      drawText("ÚLTIMOS QUATRO DIAS", 70, 575, 14, colors.text, 800);
+      days.slice(1).forEach((day, index) => {
+        const x = 70 + index * 415;
+        rect(x, 600, 395, 145, colors.panel, colors.line, 12);
+        drawText(day.date, x + 15, 622, 13, colors.text, 900);
+        [["B2C T1", day.b2c.shift1], ["B2C T2", day.b2c.shift2], ["B2B T1", day.b2b.shift1], ["B2B T2", day.b2b.shift2]].forEach((item, row) => {
+          drawText(item[0], x + 15, 651 + row * 22, 10, colors.muted, 800);
+          drawText(fmt(item[1].products) + " prod. · " + decimalFmt(item[1].productsPerHour) + "/h · " + decimalFmt(item[1].ordersPerHour) + " ped/h", x + 90, 651 + row * 22, 10, colors.text, 700);
+        });
+      });
+      drawText("MÉDIA DE PRODUTOS POR HORA", 70, 790, 14, colors.text, 800);
+      const chartDays = days.slice().reverse(), chartLeft = 100, chartRight = 1700, chartTop = 825, chartBottom = 1035;
+      const chartSeries = [
+        { color: "#2563eb", values: chartDays.map(day => day.b2c.shift1.productsPerHour) },
+        { color: "#06b6d4", values: chartDays.map(day => day.b2c.shift2.productsPerHour) },
+        { color: "#8b5cf6", values: chartDays.map(day => day.b2b.shift1.productsPerHour) },
+        { color: "#f59e0b", values: chartDays.map(day => day.b2b.shift2.productsPerHour) }
+      ];
+      const maximum = Math.max(1, ...chartSeries.flatMap(item => item.values));
+      chartSeries.forEach(item => {
+        context.beginPath(); context.strokeStyle = item.color; context.lineWidth = 4;
+        item.values.forEach((value, index) => {
+          const px = chartLeft + index * (chartRight - chartLeft) / 4, py = chartBottom - value / maximum * (chartBottom - chartTop);
+          if (index === 0) context.moveTo(px, py); else context.lineTo(px, py);
+        });
+        context.stroke();
+      });
+      chartDays.forEach((day, index) => drawText(day.date.slice(0, 5), chartLeft + index * (chartRight - chartLeft) / 4, 1060, 11, colors.muted, 700, "center"));
+    }
   } else if (pageId === "page-triados") {
     rect(70, 190, 1660, 110, colors.panel, colors.line, 14);
     [["Pedidos", currentMetrics.triagedSummary.orders], ["Produtos", currentMetrics.triagedSummary.products], ["Volumes", currentMetrics.triagedSummary.volumes]].forEach((item, index) => {
@@ -833,8 +991,8 @@ let matrixResizeTimer;
 window.addEventListener("resize", () => {
   clearTimeout(matrixResizeTimer);
   matrixResizeTimer = setTimeout(() => {
-    $("#b2c-table").innerHTML = pendingMatrixHtml(currentMetrics.b2cHourly);
-    $("#b2b-table").innerHTML = pendingMatrixHtml(currentMetrics.b2bHourly);
+    $("#b2c-table").innerHTML = pendingMatrixHtml(currentMetrics.b2cHourly, false);
+    $("#b2b-table").innerHTML = pendingMatrixHtml(currentMetrics.b2bHourly, true);
   }, 120);
 });
 document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => {
