@@ -15,7 +15,7 @@ function hideAuthModal(){$("#auth-backdrop").classList.remove("show");$("#auth-e
 function closeAuthModal(){if(cloudState.gatewayRequired)showAccessGateway();else hideAuthModal()}
 function applyAccessMode(){const manager=cloudState.isManager;$("#manager-navigation").hidden=!manager;$("#access-avatar").textContent=manager?"GE":"OP";$("#access-name").textContent=manager?(cloudState.user.user_metadata?.name||cloudState.user.email||"Gestor"):"Modo Operação";$("#access-role").textContent=manager?"Gestor · configurações liberadas":"Acesso visual";document.body.dataset.access=manager?"manager":"operation";["#io-open-settings","#pickup-go-settings"].forEach(selector=>{const element=$(selector);if(element)element.hidden=!manager});if(!manager&&["page-io","page-configuracoes","page-sla-profiles"].includes(document.querySelector(".page.active")?.id)){document.querySelector('.nav-item[data-page="dashboard"]')?.click()}}
 async function verifyManager(user){if(!user||!cloudState.client)return false;const {data,error}=await cloudState.client.from("manager_profiles").select("role,active").eq("user_id",user.id).maybeSingle();return !error&&data&&data.active&&data.role==="manager"}
-async function applyCloudSettings(rows){const map=Object.fromEntries((rows||[]).map(row=>[row.setting_key,row.payload]));if(Array.isArray(map.sla_profiles)){slaProfiles=map.sla_profiles;localStorage.setItem("luft-sla-profiles-v1",JSON.stringify(slaProfiles))}if(map.pickup_schedules&&typeof map.pickup_schedules==="object"){pickupSchedules=map.pickup_schedules;localStorage.setItem("luft-pickup-schedules",JSON.stringify(pickupSchedules))}if(map.io_config&&typeof map.io_config==="object"){ioConfig={...ioDefaults,...map.io_config};localStorage.setItem("luft-io-config",JSON.stringify(ioConfig))}render(currentMetrics)}
+async function applyCloudSettings(rows){const map=Object.fromEntries((rows||[]).map(row=>[row.setting_key,row.payload]));if(Array.isArray(map.sla_profiles)){slaProfiles=map.sla_profiles;localStorage.setItem("luft-sla-profiles-v1",JSON.stringify(slaProfiles))}if(map.pickup_schedules&&typeof map.pickup_schedules==="object"){pickupSchedules=map.pickup_schedules;localStorage.setItem("luft-pickup-schedules",JSON.stringify(pickupSchedules))}if(map.io_config&&typeof map.io_config==="object"){ioConfig={...ioDefaults,...map.io_config};localStorage.setItem("luft-io-config",JSON.stringify(ioConfig))}invalidateOperationalCaches();render(currentMetrics)}
 async function pullCloudSettings(showMessage){if(!cloudState.client)return false;cloudState.syncing=true;updateDatabaseStatus("Sincronizando…","Buscando as configurações operacionais do banco.");const {data,error}=await cloudState.client.from("system_settings").select("setting_key,payload,updated_at");cloudState.syncing=false;if(error){updateDatabaseStatus("Falha na sincronização",error.message);if(showMessage)showToast("Não foi possível sincronizar com o banco.",true);return false}await applyCloudSettings(data);cloudState.lastSync=new Date();updateDatabaseStatus("Banco conectado","Última sincronização às "+cloudState.lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));if(showMessage)showToast("Configurações sincronizadas com o Supabase.");return true}
 async function pushCloudSetting(key,payload){if(!cloudState.client||!cloudState.isManager)return false;const {error}=await cloudState.client.from("system_settings").upsert({setting_key:key,payload,updated_by:cloudState.user.id},{onConflict:"setting_key"});if(error){showToast("Alteração salva localmente, mas não sincronizada: "+error.message,true);return false}cloudState.lastSync=new Date();updateDatabaseStatus("Banco conectado","Alteração sincronizada às "+cloudState.lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));return true}
 async function syncAllSettings(){if(!cloudState.client)return showToast("Configure o Supabase antes de sincronizar.",true);if(!cloudState.isManager)return pullCloudSettings(true);updateDatabaseStatus("Sincronizando…","Enviando as configurações locais e conferindo o banco.");const rows=[{setting_key:"sla_profiles",payload:slaProfiles,updated_by:cloudState.user.id},{setting_key:"pickup_schedules",payload:pickupSchedules,updated_by:cloudState.user.id},{setting_key:"io_config",payload:ioConfig,updated_by:cloudState.user.id}];const {error}=await cloudState.client.from("system_settings").upsert(rows,{onConflict:"setting_key"});if(error){updateDatabaseStatus("Falha na sincronização",error.message);return showToast("Não foi possível sincronizar as configurações.",true)}await pullCloudSettings(false);showToast("Todas as configurações foram sincronizadas.")}
@@ -23,11 +23,13 @@ async function initializeSupabase(){ensureDatabaseStatusUi();const savedMode=ses
 const fmt = (value) => Number(value || 0).toLocaleString("pt-BR");
 const zeroSummary = () => ({ orders: 0, products: 0, volumes: 0 });
 let currentMetrics = createEmptyMetrics();
+let slaRuntimeCache={metrics:null,profiles:null,pickups:null,minute:-1,records:[]};
+function invalidateOperationalCaches(){slaRuntimeCache={metrics:null,profiles:null,pickups:null,minute:-1,records:[]}}
 
 function createEmptyMetrics() {
   return {
     triaged: 0, processedToday: 0, withoutPdf: 0, pinRequests: 0, volumesToday: 0,
-    recordCount: 0, fileName: "", importedAt: "", triagedSummary: zeroSummary(),
+    recordCount: 0, receivedRows: 0, rejectedRows: 0, fileName: "", importedAt: "", triagedSummary: zeroSummary(),
     withoutPdfSummary: zeroSummary(), dispatchedToday: zeroSummary(), dispatchedYesterday: zeroSummary(),
     b2cHourly: [], b2bHourly: [], pinDetails: [], lastDispatch: null, d1Date: "",
     triagedByCarrier: [], productivity: { days: [] }, slaRecords: [], ioOrders: []
@@ -43,9 +45,9 @@ let pickupSchedules = loadPickupSchedules();
 let slaProfiles = loadSlaProfiles();
 const pickupDayNames = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function loadPickupSchedules(){try{return JSON.parse(localStorage.getItem("luft-pickup-schedules")||"{}")||{}}catch(error){return {}}}
-function savePickupSchedules(){localStorage.setItem("luft-pickup-schedules",JSON.stringify(pickupSchedules));pushCloudSetting("pickup_schedules",pickupSchedules)}
+function savePickupSchedules(){invalidateOperationalCaches();localStorage.setItem("luft-pickup-schedules",JSON.stringify(pickupSchedules));pushCloudSetting("pickup_schedules",pickupSchedules)}
 function loadSlaProfiles(){try{const data=JSON.parse(localStorage.getItem("luft-sla-profiles-v1")||"[]");return Array.isArray(data)?data:[]}catch(error){return []}}
-function saveSlaProfiles(){localStorage.setItem("luft-sla-profiles-v1",JSON.stringify(slaProfiles));pushCloudSetting("sla_profiles",slaProfiles)}
+function saveSlaProfiles(){invalidateOperationalCaches();localStorage.setItem("luft-sla-profiles-v1",JSON.stringify(slaProfiles));pushCloudSetting("sla_profiles",slaProfiles)}
 function validPickupTimes(value){return Array.from(new Set(String(value||"").split(/[,;\s]+/).map(item=>item.trim()).filter(item=>/^([01]\d|2[0-3]):[0-5]\d$/.test(item)))).sort()}
 function carrierSchedule(carrier){const exact=pickupSchedules[carrier];if(exact)return exact;const key=Object.keys(pickupSchedules).find(name=>normalizeHeader(name)===normalizeHeader(carrier));return key?pickupSchedules[key]:null}
 function nextPickupForCarrier(carrier,afterDate){const schedule=carrierSchedule(carrier);if(!schedule)return null;const after=new Date(afterDate);for(let offset=0;offset<15;offset++){const day=new Date(after);day.setDate(day.getDate()+offset);day.setHours(0,0,0,0);const times=schedule[String(day.getDay())]||[];for(const time of times){const [hour,minute]=time.split(":").map(Number),candidate=new Date(day);candidate.setHours(hour,minute,0,0);if(candidate>after)return candidate}}return null}
@@ -63,13 +65,16 @@ function effectiveSlaDeadline(record,profile){const base=calculateProfileDue(pro
 function profileAlertMinutes(profile){const values=((profile.alerts||{}).thresholdMinutes||[]).map(Number).filter(value=>value>0);return values.length?Math.max(...values):0}
 
 function forEachCsvRow(text, callback) {
+  let separator=",",probeQuoted=false,commas=0,semicolons=0;
+  for(let probe=0;probe<Math.min(text.length,65536);probe++){const char=text[probe];if(char==='"'){if(probeQuoted&&text[probe+1]==='"'){probe++;continue}probeQuoted=!probeQuoted}else if(!probeQuoted&&(char==='\n'||char==='\r')){if(commas||semicolons)break}else if(!probeQuoted&&char===',')commas++;else if(!probeQuoted&&char===';')semicolons++}
+  if(semicolons>commas)separator=";";
   let row = [], cell = "", quoted = false, rowIndex = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (char === '"') {
       if (quoted && text[i + 1] === '"') { cell += '"'; i++; }
       else quoted = !quoted;
-    } else if (char === "," && !quoted) {
+    } else if (char === separator && !quoted) {
       row.push(cell); cell = "";
     } else if ((char === "\n" || char === "\r") && !quoted) {
       if (char === "\r" && text[i + 1] === "\n") i++;
@@ -119,7 +124,7 @@ function calculateMetrics(csvText, fileName) {
     triaged: new Set(), processedToday: new Set(), withoutPdf: new Set(), pin: new Set(), sla: new Set(),
     triagedSummary: new Set(), withoutPdfSummary: new Set(), today: new Set()
   };
-  const b2c = new Map(), b2b = new Map();
+  const b2c = new Map(), b2b = new Map(), pinDetailByOrder=new Map();
   const productivityMap = new Map();
   const triagedCarriers = new Map();
   const processedByDate = new Map();
@@ -148,18 +153,22 @@ function calculateMetrics(csvText, fileName) {
         skuQty: column("Qtde. de Produto"), separatedAt: column("Separado em"), billedAt: column("Faturado em"), conferenceAt: column("Conferido em"), conferenceStarted: column("Conferência Iniciada"),
         serviceCode: column("Código do Serviço"), weighingUser: column("Usuário da Pesagem"), shipment: column("Título Romaneio"), orderClassification: column("Classificação Tipo Pedido")
       };
-      const required = [indexes.order,indexes.series,indexes.status,indexes.processed,indexes.processedAt,indexes.volumes,indexes.products,indexes.load,indexes.carrier];
-      if (required.some(index => index < 0)) throw new Error("O arquivo não contém todas as colunas obrigatórias.");
+      const required = [["Pedido de Venda",indexes.order],["Série",indexes.series],["Status da Nota Fiscal",indexes.status],["Processado",indexes.processed],["Processado em",indexes.processedAt],["Qtde. de Volumes",indexes.volumes],["Qtde. Total de Produto",indexes.products],["Carga",indexes.load],["Transportadora",indexes.carrier]];
+      const missing=required.filter(item=>item[1]<0).map(item=>item[0]);
+      if(missing.length)throw new Error("Colunas obrigatórias ausentes: "+missing.join(", ")+".");
       return;
     }
-    metrics.recordCount++;
     const order = (values[indexes.order] || "").trim();
-    if (!order) return;
+    metrics.receivedRows++;
+    if (!order) { metrics.rejectedRows++; return; }
     const series = (values[indexes.series] || "").trim();
     const status = normalizeHeader(values[indexes.status] || "").toUpperCase();
     const processedAt = (values[indexes.processedAt] || "").trim();
-    const products = Number(String(values[indexes.products] || "0").replace(",", ".")) || 0;
-    const volumes = Number(String(values[indexes.volumes] || "0").replace(",", ".")) || 0;
+    const productsRaw=String(values[indexes.products]||"").trim(),volumesRaw=String(values[indexes.volumes]||"").trim();
+    const products = Number(productsRaw.replace(",", ".")) || 0;
+    const volumes = Number(volumesRaw.replace(",", ".")) || 0;
+    if ((productsRaw&&!Number.isFinite(Number(productsRaw.replace(",","."))))||(volumesRaw&&!Number.isFinite(Number(volumesRaw.replace(",","."))))){metrics.rejectedRows++;return}
+    metrics.recordCount++;
     const carrier = (values[indexes.carrier] || "").trim();
     const load = (values[indexes.load] || "").trim();
     const weighedAt = (values[indexes.weighedAt] || "").trim();
@@ -240,9 +249,9 @@ function calculateMetrics(csvText, fileName) {
     if (isBillingStatus && pinStates.has(uf) && isFlBrasil) {
       if (!seen.pin.has(order)) {
         seen.pin.add(order);
-        metrics.pinDetails.push({ order, uf, load: load || "Sem carga" });
+        const detail={ order, uf, series:series || "Vazia", status:(values[indexes.status] || "").trim() || "Não informado", load: load || "Sem carga" };metrics.pinDetails.push(detail);pinDetailByOrder.set(order,detail);
       } else if (load) {
-        const pinDetail = metrics.pinDetails.find(item => item.order === order);
+        const pinDetail = pinDetailByOrder.get(order);
         if (pinDetail) {
           const loads = pinDetail.load === "Sem carga" ? [] : pinDetail.load.split(", ");
           if (!loads.includes(load)) loads.push(load);
@@ -295,6 +304,9 @@ function calculateMetrics(csvText, fileName) {
     }
   });
 
+  if(!indexes)throw new Error("O arquivo CSV não possui uma linha de cabeçalho válida.");
+  if(metrics.receivedRows===0)throw new Error("O CSV contém apenas o cabeçalho e não possui registros.");
+  if(metrics.recordCount===0)throw new Error("Nenhum registro válido foi encontrado. Verifique Pedido de Venda, produtos e volumes.");
   const buckets = (map) => Array.from(map, ([key, bucket]) => {
     const parts = key.split("||");
     const details=Array.from(bucket.orders.values());
@@ -354,9 +366,11 @@ function calculateMetrics(csvText, fileName) {
   return metrics;
 }
 
-function calculateMetricsAsync(csvText, fileName) {
+function decodeCsvBuffer(buffer){if(typeof buffer==="string")return buffer;const bytes=new Uint8Array(buffer),utf8=new TextDecoder("utf-8").decode(bytes);if(utf8.includes("\uFFFD"))try{return new TextDecoder("windows-1252").decode(bytes)}catch(error){}return utf8}
+
+function calculateMetricsAsync(csvBuffer, fileName) {
   if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") {
-    return Promise.resolve().then(() => calculateMetrics(csvText, fileName));
+    return Promise.resolve().then(() => calculateMetrics(decodeCsvBuffer(csvBuffer), fileName));
   }
   const workerSource = [
     '"use strict";',
@@ -364,10 +378,11 @@ function calculateMetricsAsync(csvText, fileName) {
     createEmptyMetrics.toString(),
     normalizeHeader.toString(),
     forEachCsvRow.toString(),
+    decodeCsvBuffer.toString(),
     parseBrazilianDateTime.toString(),
     operationalSector.toString(),
     calculateMetrics.toString(),
-    'self.onmessage = function(event) { try { self.postMessage({ ok:true, metrics:calculateMetrics(event.data.csvText,event.data.fileName) }); } catch (error) { self.postMessage({ ok:false, message:error && error.message ? error.message : String(error) }); } };'
+    'self.onmessage = function(event) { try { const csvText=decodeCsvBuffer(event.data.csvBuffer); self.postMessage({ ok:true, metrics:calculateMetrics(csvText,event.data.fileName) }); } catch (error) { self.postMessage({ ok:false, message:error && error.message ? error.message : String(error) }); } };'
   ].join("\n");
   const workerUrl = URL.createObjectURL(new Blob([workerSource], { type:"text/javascript" }));
   return new Promise((resolve, reject) => {
@@ -379,7 +394,8 @@ function calculateMetricsAsync(csvText, fileName) {
       else reject(new Error(event.data && event.data.message || "Falha ao processar o CSV."));
     };
     worker.onerror = event => { finish(); reject(new Error(event.message || "Falha ao iniciar o processamento em segundo plano.")); };
-    worker.postMessage({ csvText, fileName });
+    if(csvBuffer instanceof ArrayBuffer)worker.postMessage({csvBuffer,fileName},[csvBuffer]);
+    else worker.postMessage({csvBuffer,fileName});
   });
 }
 
@@ -527,7 +543,7 @@ function groupPinDetails(data) {
     const loads = item.load && item.load !== "Sem carga" ? item.load.split(",").map(load => load.trim()).filter(Boolean) : ["Sem carga"];
     loads.forEach(load => {
       if (!groups.has(load)) groups.set(load, new Map());
-      groups.get(load).set(item.order, { order: item.order, uf: item.uf });
+      groups.get(load).set(item.order, { order: item.order, series:item.series || "Vazia", status:item.status || "Não informado", uf: item.uf });
     });
   });
   return Array.from(groups, ([load, orders]) => ({ load, orders: Array.from(orders.values()).sort((a, b) => a.order.localeCompare(b.order, "pt-BR", { numeric: true })) }))
@@ -537,7 +553,7 @@ function groupPinDetails(data) {
 function pinHtml(data) {
   const groups = groupPinDetails(data);
   if (!groups.length) return '<article class="card pin-empty"><div class="pending-empty">Importe o arquivo CSV para visualizar as solicitações PIN.</div></article>';
-  return groups.map(group => '<article class="card pin-group"><div class="pin-group-head"><div><small>Carga</small><strong>' + escapeHtml(group.load) + '</strong></div><span class="pin-count">' + fmt(group.orders.length) + '</span></div><div class="pin-orders"><div class="pin-order-head"><span>Pedido de venda</span><span>UF</span></div>' + group.orders.map(item => '<div class="pin-order-row"><strong>' + escapeHtml(item.order) + '</strong><span>' + escapeHtml(item.uf) + '</span></div>').join("") + '</div></article>').join("");
+  return groups.map(group => '<article class="card pin-group"><div class="pin-group-head"><div><small>Carga</small><strong>' + escapeHtml(group.load) + '</strong></div><span class="pin-count">' + fmt(group.orders.length) + '</span></div><div class="pin-orders"><div class="pin-order-head"><span>Pedido de venda</span><span>Série</span><span>Status NF</span><span>UF</span></div>' + group.orders.map(item => '<div class="pin-order-row"><strong>' + escapeHtml(item.order) + '</strong><span>' + escapeHtml(item.series) + '</span><span title="' + escapeHtml(item.status) + '">' + escapeHtml(item.status) + '</span><span>' + escapeHtml(item.uf) + '</span></div>').join("") + '</div></article>').join("");
 }
 
 function triagedCarrierListHtml(data) {
@@ -612,7 +628,7 @@ function productivityHtml(productivity) {
   return '<article class="card productivity-today"><div class="productivity-head"><div><small>Produtividade do dia</small><h2>Produtos pesados por turno</h2></div><div class="productivity-date">' + today.date + '</div></div><div class="productivity-segments">' + segment('B2C', today.b2c, 'Série 17') + segment('B2B', today.b2b, 'Séries vazia, 11 e 14') + '</div></article><div class="history-grid">' + history + '</div><article class="card productivity-chart-card"><div class="card-head"><div><h2>Evolução da produção diária</h2><p>Total de produtos por dia · cada linha representa um segmento e turno</p></div></div>' + productivityWaveHtml(productivity.days) + '</article>';
 }
 
-const slaUi = { status: "", war: false, drawerRecords: [], drawerTitle: "" };
+const slaUi = { status: "", war: false, drawerRecords: [], drawerTitle: "", drawerPage:0, drawerPageSize:100 };
 const ioDefaults = { metaB2c:0,metaB2b:0,rateSepB2c:60,rateFatB2c:100,rateSepB2b:90,rateFatB2b:180,teamSepB2c:0,teamFatB2c:0,teamSepB2b:0,teamFatB2b:0 };
 let ioConfig = loadIoConfig();
 
@@ -633,8 +649,9 @@ function ioWaveRanking(orders,segment){
 
 function calculateIo(metrics){
   const now=new Date(),shift=currentShiftTime(),orders=metrics.ioOrders;
-  const produced=(segment,field)=>orders.filter(item=>item.segment===segment&&sameLocalDay(item[field],now)).reduce((sum,item)=>sum+item.products,0);
-  const sepB2c=produced("b2c","separatedAt"),fatB2c=produced("b2c","weighedAt"),sepB2b=produced("b2b","separatedAt"),fatB2b=produced("b2b","weighedAt");
+  const todayText=String(now.getDate()).padStart(2,"0")+"/"+String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear();
+  let sepB2c=0,fatB2c=0,sepB2b=0,fatB2b=0;
+  orders.forEach(item=>{const separated=String(item.separatedAt||"").startsWith(todayText),weighed=String(item.weighedAt||"").startsWith(todayText);if(item.segment==="b2c"){if(separated)sepB2c+=item.products;if(weighed)fatB2c+=item.products}else if(item.segment==="b2b"){if(separated)sepB2b+=item.products;if(weighed)fatB2b+=item.products}});
   const remainingB2c=Math.max(0,ioConfig.metaB2c-fatB2c),remainingB2b=Math.max(0,ioConfig.metaB2b-fatB2b);
   const capacities={sepB2c:ioConfig.teamSepB2c*ioConfig.rateSepB2c*shift.hours,fatB2c:ioConfig.teamFatB2c*ioConfig.rateFatB2c*shift.hours,sepB2b:ioConfig.teamSepB2b*ioConfig.rateSepB2b*shift.hours,fatB2b:ioConfig.teamFatB2b*ioConfig.rateFatB2b*shift.hours};
   capacities.b2c=Math.min(capacities.sepB2c,capacities.fatB2c);capacities.b2b=Math.min(capacities.sepB2b,capacities.fatB2b);capacities.total=capacities.b2c+capacities.b2b;
@@ -688,11 +705,14 @@ function humanDuration(milliseconds) {
 }
 
 function enrichedSlaRecords() {
-  const now = Date.now();
-  return currentMetrics.slaRecords.map(record => {
+  const now=Date.now(),minute=Math.floor(now/60000);
+  if(slaRuntimeCache.metrics===currentMetrics&&slaRuntimeCache.profiles===slaProfiles&&slaRuntimeCache.pickups===pickupSchedules&&slaRuntimeCache.minute===minute)return slaRuntimeCache.records;
+  const records=currentMetrics.slaRecords.map(record => {
     const profile=matchingSlaProfile(record),deadline=profile?effectiveSlaDeadline(record,profile):null,applicable=Boolean(profile&&deadline),alertMinutes=profile?profileAlertMinutes(profile):0;
     return { ...record, profileId:profile?profile.id:null, profileName:profile?profile.name:"SLA não configurado", profileSummary:profile?profileRuleSummary(profile):"Nenhum perfil ativo corresponde à transportadora, série e status deste pedido.", alertMinutes, dueStamp:deadline?deadline.due:null, pickupStamp:deadline?deadline.pickup:null, deadlineSource:deadline?deadline.source:"Sem perfil aplicável ou campo de origem vazio", slaApplicable:applicable, slaStatus:applicable?slaState(deadline.due,now,alertMinutes):"notApplicable", remaining:applicable?deadline.due-now:null };
   });
+  slaRuntimeCache={metrics:currentMetrics,profiles:slaProfiles,pickups:pickupSchedules,minute,records};
+  return records;
 }
 
 function selectOptions(selector, records, field, emptyLabel) {
@@ -761,9 +781,10 @@ function renderSlaCentral(refreshFilters) {
   const next=applicable.filter(record=>record.remaining>=0).sort((a,b)=>a.dueStamp-b.dueStamp)[0]; $("#sla-countdown").textContent=next?humanDuration(next.remaining):"Sem prazo futuro";
 }
 
+function renderSlaDrawerPage(){const limit=(slaUi.drawerPage+1)*slaUi.drawerPageSize,visible=slaUi.drawerRecords.slice(0,limit);$("#sla-drawer-body").innerHTML=visible.map((record,index)=>{const meta=slaStatusMeta[record.slaStatus];return '<button class="drawer-order" data-sla-record-index="'+index+'"><span><strong>Pedido '+escapeHtml(record.order)+'</strong><small>NF '+escapeHtml(record.invoice||"—")+'</small></span><span><strong>'+escapeHtml(record.load)+'</strong><small>Onda '+escapeHtml(record.wave||record.waveId||"—")+'</small></span><span><strong>'+escapeHtml(carrierShort(record.carrier))+'</strong><small>'+escapeHtml(record.status)+'</small></span><strong style="color:'+meta.color+'">'+escapeHtml(record.slaApplicable?humanDuration(record.remaining):meta.label)+'</strong></button>'}).join("")+(visible.length<slaUi.drawerRecords.length?'<button class="btn secondary" id="sla-drawer-more">Mostrar mais '+fmt(Math.min(slaUi.drawerPageSize,slaUi.drawerRecords.length-visible.length))+' pedidos</button>':'')}
 function openSlaDrawer(records,title) {
-  slaUi.drawerRecords=records; slaUi.drawerTitle=title; $("#sla-drawer-title").textContent=title; $("#sla-drawer-subtitle").textContent=fmt(records.length)+" pedidos"; $("#sla-drawer-kicker").textContent="DRILL DOWN OPERACIONAL";
-  $("#sla-drawer-body").innerHTML=records.sort((a,b)=>(a.slaApplicable===b.slaApplicable?a.dueStamp-b.dueStamp:a.slaApplicable?-1:1)).map((record,index)=>{const meta=slaStatusMeta[record.slaStatus];return '<button class="drawer-order" data-sla-record-index="'+index+'"><span><strong>Pedido '+escapeHtml(record.order)+'</strong><small>NF '+escapeHtml(record.invoice||"—")+'</small></span><span><strong>'+escapeHtml(record.load)+'</strong><small>Onda '+escapeHtml(record.wave||record.waveId||"—")+'</small></span><span><strong>'+escapeHtml(carrierShort(record.carrier))+'</strong><small>'+escapeHtml(record.status)+'</small></span><strong style="color:'+meta.color+'">'+escapeHtml(record.slaApplicable?humanDuration(record.remaining):meta.label)+'</strong></button>'}).join("");
+  slaUi.drawerRecords=records.slice().sort((a,b)=>(a.slaApplicable===b.slaApplicable?a.dueStamp-b.dueStamp:a.slaApplicable?-1:1)); slaUi.drawerTitle=title;slaUi.drawerPage=0; $("#sla-drawer-title").textContent=title; $("#sla-drawer-subtitle").textContent=fmt(records.length)+" pedidos"; $("#sla-drawer-kicker").textContent="DRILL DOWN OPERACIONAL";
+  renderSlaDrawerPage();
   $("#sla-drawer").classList.add("show"); $("#sla-drawer-backdrop").classList.add("show");
 }
 
@@ -823,13 +844,14 @@ function loadPickupForm(carrier){const schedule=carrierSchedule(carrier)||{};doc
 function renderPickupSavedList(){const names=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR"));$("#pickup-saved-list").innerHTML=names.length?names.map(name=>{const schedule=pickupSchedules[name],summary=pickupDayNames.map((day,index)=>(schedule[String(index)]||[]).length?day.slice(0,3)+" "+schedule[String(index)].join("/"):"").filter(Boolean).join(" · ");return '<div class="pickup-saved-item"><span><strong>'+escapeHtml(name)+'</strong><small>'+escapeHtml(summary||"Sem horários")+'</small></span><button class="danger-mini" data-delete-pickup="'+escapeHtml(name)+'">Excluir</button></div>'}).join(''):'<div class="io-empty">Nenhuma grade cadastrada.</div>'}
 function allUpcomingPickups(afterDate){const result=[];Object.keys(pickupSchedules).forEach(carrier=>{const date=nextPickupForCarrier(carrier,afterDate);if(date)result.push({carrier,date,stamp:date.getTime()})});return result.sort((a,b)=>a.stamp-b.stamp)}
 function isSpecialSeries14Alert(record){const carrier=normalizeHeader(record.carrier),special=carrier.includes("fl brasil")||carrier.includes("viviane")||carrier.includes("patrus");return special&&record.series==="14"&&record.importedStamp&&Date.now()-record.importedStamp>3*86400000}
-function pendingPickupFlow(carrier){const normalized=normalizeHeader(carrier);return enrichedSlaRecords().filter(record=>normalizeHeader(record.carrier)===normalized&&record.load==="Sem carga"&&!normalizeHeader(record.status).includes("coleta iniciada")&&(record.slaApplicable||isSpecialSeries14Alert(record)))}
+function pendingPickupFlowGroups(){const groups=new Map();enrichedSlaRecords().forEach(record=>{if(record.load!=="Sem carga"||normalizeHeader(record.status).includes("coleta iniciada")||(!record.slaApplicable&&!isSpecialSeries14Alert(record)))return;const key=normalizeHeader(record.carrier);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(record)});return groups}
+function pendingPickupFlow(carrier,groups){return (groups||pendingPickupFlowGroups()).get(normalizeHeader(carrier))||[]}
 function renderPickupDashboard(){
-  const now=new Date(),upcoming=allUpcomingPickups(now),next=upcoming[0],pending=next?pendingPickupFlow(next.carrier):[];
+  const now=new Date(),flowGroups=pendingPickupFlowGroups(),upcoming=allUpcomingPickups(now),next=upcoming[0],pending=next?pendingPickupFlow(next.carrier,flowGroups):[];
   const nextHtml=next?'<article class="card pickup-next" data-next-pickup="1" role="button" tabindex="0"><div class="pickup-next-icon">🚚</div><div><small>Próxima transportadora · clique para detalhar</small><strong>'+escapeHtml(next.carrier)+'</strong><small>'+next.date.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"2-digit"})+' às '+next.date.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})+'</small>'+(pending.length?'<div class="pickup-alert">⚠ '+fmt(pending.length)+' pedidos em alerta ainda sem carga e sem Coleta Iniciada</div>':'<div class="pickup-alert" style="background:#22c55e24;color:#bbf7d0">✓ Nenhum pedido em alerta fora de carga/coleta</div>')+'</div><div class="pickup-countdown"><small>Tempo restante</small><strong>'+escapeHtml(humanDuration(next.stamp-Date.now()).replace("vence em ",""))+'</strong></div></article>':'<article class="card pickup-next"><div class="pickup-next-icon">🚚</div><div><small>Próxima transportadora</small><strong>Nenhuma coleta cadastrada</strong><small>Cadastre os horários em Configurações.</small></div></article>';
   const days=Array.from({length:7},(_,offset)=>{const date=new Date(now);date.setDate(date.getDate()+offset);date.setHours(0,0,0,0);const slots=[];Object.entries(pickupSchedules).forEach(([carrier,schedule])=>(schedule[String(date.getDay())]||[]).forEach(time=>{const [hour,minute]=time.split(":").map(Number),stamp=new Date(date);stamp.setHours(hour,minute,0,0);slots.push({carrier,time,stamp:stamp.getTime()})}));slots.sort((a,b)=>a.stamp-b.stamp);return{date,slots}});
-  const week='<div class="pickup-week">'+days.map((day,index)=>'<article class="card pickup-day '+(index===0?'today':'')+'"><h3>'+pickupDayNames[day.date.getDay()]+'</h3><small>'+day.date.toLocaleDateString("pt-BR")+(index===0?' · hoje':'')+'</small>'+(day.slots.length?day.slots.map(slot=>'<div class="pickup-slot '+(next&&slot.stamp===next.stamp&&normalizeHeader(slot.carrier)===normalizeHeader(next.carrier)?'next':'')+'"><strong>'+escapeHtml(slot.time)+' · '+escapeHtml(carrierShort(slot.carrier))+'</strong><small>'+fmt(pendingPickupFlow(slot.carrier).length)+' em fluxo sem carga</small></div>').join(''):'<div class="pickup-help">Sem coleta</div>')+'</article>').join('')+'</div>';
-  const rows=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR")).map(carrier=>'<div class="pickup-table-row"><strong>'+escapeHtml(carrier)+'</strong>'+Array.from({length:7},(_,index)=>'<span>'+escapeHtml((pickupSchedules[carrier][String(index)]||[]).join(" / ")||"—")+'</span>').join('')+'<span>'+fmt(pendingPickupFlow(carrier).length)+' pend.</span></div>').join('');
+  const week='<div class="pickup-week">'+days.map((day,index)=>'<article class="card pickup-day '+(index===0?'today':'')+'"><h3>'+pickupDayNames[day.date.getDay()]+'</h3><small>'+day.date.toLocaleDateString("pt-BR")+(index===0?' · hoje':'')+'</small>'+(day.slots.length?day.slots.map(slot=>'<div class="pickup-slot '+(next&&slot.stamp===next.stamp&&normalizeHeader(slot.carrier)===normalizeHeader(next.carrier)?'next':'')+'"><strong>'+escapeHtml(slot.time)+' · '+escapeHtml(carrierShort(slot.carrier))+'</strong><small>'+fmt(pendingPickupFlow(slot.carrier,flowGroups).length)+' em fluxo sem carga</small></div>').join(''):'<div class="pickup-help">Sem coleta</div>')+'</article>').join('')+'</div>';
+  const rows=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR")).map(carrier=>'<div class="pickup-table-row"><strong>'+escapeHtml(carrier)+'</strong>'+Array.from({length:7},(_,index)=>'<span>'+escapeHtml((pickupSchedules[carrier][String(index)]||[]).join(" / ")||"—")+'</span>').join('')+'<span>'+fmt(pendingPickupFlow(carrier,flowGroups).length)+' pend.</span></div>').join('');
   const table='<article class="card"><div class="card-head"><div><h2>Grade semanal completa</h2><p>Série 17 em fluxo e Série 14 acima de 3 dias para FL Brasil, Viviane e Patrus</p></div></div><div class="pickup-table"><div class="pickup-table-row header"><span>Transportadora</span>'+pickupDayNames.map(day=>'<span>'+day.slice(0,3)+'</span>').join('')+'<span>Alerta</span></div>'+(rows||'<div class="io-empty">Nenhuma grade cadastrada.</div>')+'</div></article>';
   $("#pickup-dashboard").innerHTML=nextHtml+week+table;
 }
@@ -872,7 +894,7 @@ function showToast(message, error) {
   toast.textContent = message;
   toast.className = "toast show" + (error ? " error" : "");
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => toast.className = "toast", 3500);
+  showToast.timer = setTimeout(() => toast.className = "toast", error ? 10000 : 3500);
 }
 
 function exportSummary() {
@@ -899,7 +921,7 @@ function exportDashboardImage() {
   canvas.width = 1800;
   canvas.height = 1120;
   const context = canvas.getContext("2d");
-  if (!context) return showToast("O navegador não oferece suporte à exportação.", true);
+  if (!context) { setExportBusy(false); return showToast("O navegador não oferece suporte à exportação.", true); }
 
   const dark = document.body.dataset.theme === "dark";
   const colors = {
@@ -985,13 +1007,14 @@ function exportDashboardImage() {
 
   text("Dados processados localmente · Turno A · CD Extrema", 70, 1082, 14, colors.muted, 500);
   canvas.toBlob(blob => {
-    if (!blob) return showToast("Não foi possível gerar a imagem.", true);
+    if (!blob) { setExportBusy(false); return showToast("Não foi possível gerar a imagem.", true); }
     const downloadUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = downloadUrl;
     link.download = "visao-geral-luft-" + new Date().toISOString().slice(0, 10) + ".png";
     link.click();
     setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    setExportBusy(false);
     showToast("Imagem da visão geral exportada.");
   }, "image/png");
 }
@@ -1001,15 +1024,15 @@ function exportDetailPageImage(pageId) {
   const pinGroups = isPin ? groupPinDetails(currentMetrics.pinDetails) : [];
   let pinContentHeight = 0;
   for (let index = 0; index < pinGroups.length; index += 2) {
-    const leftHeight = 78 + pinGroups[index].orders.length * 38;
-    const rightHeight = pinGroups[index + 1] ? 78 + pinGroups[index + 1].orders.length * 38 : 0;
+    const leftHeight = 104 + pinGroups[index].orders.length * 46;
+    const rightHeight = pinGroups[index + 1] ? 104 + pinGroups[index + 1].orders.length * 46 : 0;
     pinContentHeight += Math.max(leftHeight, rightHeight) + 24;
   }
   const canvas = document.createElement("canvas");
   canvas.width = 1800;
   canvas.height = isPin ? Math.max(1100, 250 + pinContentHeight) : 1120;
   const context = canvas.getContext("2d");
-  if (!context) return showToast("O navegador não oferece suporte à exportação.", true);
+  if (!context) { setExportBusy(false); return showToast("O navegador não oferece suporte à exportação.", true); }
   const dark = document.body.dataset.theme === "dark";
   const colors = {
     background: dark ? "#0b1220" : "#f4f6f9", panel: dark ? "#111b2e" : "#ffffff",
@@ -1109,41 +1132,44 @@ function exportDetailPageImage(pageId) {
       });
     };
     if (today) {
-      drawText("HOJE · " + today.date, 70, 205, 15, colors.blue, 900);
-      drawText("B2C · SÉRIE 17", 70, 243, 14, colors.text, 800);drawText("TOTAL DO DIA: "+fmt(today.b2c.shift1.products+today.b2c.shift2.products),1700,243,13,colors.blue,900,"right");
-      shiftBox("1º turno · 06h–14h59", today.b2c.shift1, 70, 265, 805);
-      shiftBox("2º turno · 15h–23h59", today.b2c.shift2, 895, 265, 805);
-      drawText("B2B · SÉRIES VAZIA, 11 E 14", 70, 405, 14, colors.text, 800);drawText("TOTAL DO DIA: "+fmt(today.b2b.shift1.products+today.b2b.shift2.products),1700,405,13,colors.blue,900,"right");
-      shiftBox("1º turno · 06h–14h59", today.b2b.shift1, 70, 427, 805);
-      shiftBox("2º turno · 15h–23h59", today.b2b.shift2, 895, 427, 805);
+      rect(70,190,1660,350,colors.panel,colors.line,16);
+      const productivityGradient=context.createLinearGradient(70,190,1730,262);productivityGradient.addColorStop(0,"#14213a");productivityGradient.addColorStop(1,"#284f87");
+      rect(70,190,1660,72,productivityGradient,null,16);
+      drawText("PRODUTIVIDADE DO DIA", 94, 214, 10, "#a9bad5", 900);
+      drawText("Produtos pesados por turno", 94, 244, 22, "#fff", 900);
+      drawText(today.date,1705,226,14,"#fff",900,"right");
+      context.strokeStyle=colors.line;context.beginPath();context.moveTo(900,278);context.lineTo(900,520);context.stroke();
+      drawText("B2C", 94, 294, 16, colors.text, 900);drawText("SÉRIE 17",150,294,9,colors.muted,800);
+      drawText(fmt(today.b2c.shift1.products+today.b2c.shift2.products),875,290,20,colors.blue,900,"right");drawText("TOTAL DO DIA",875,309,8,colors.muted,800,"right");
+      shiftBox("1º turno · 06h–14h59", today.b2c.shift1, 94, 330, 382);
+      shiftBox("2º turno · 15h–23h59", today.b2c.shift2, 494, 330, 382);
+      drawText("B2B", 924, 294, 16, colors.text, 900);drawText("SÉRIES VAZIA, 11 E 14",980,294,9,colors.muted,800);
+      drawText(fmt(today.b2b.shift1.products+today.b2b.shift2.products),1705,290,20,"#8b5cf6",900,"right");drawText("TOTAL DO DIA",1705,309,8,colors.muted,800,"right");
+      shiftBox("1º turno · 06h–14h59", today.b2b.shift1, 924, 330, 382);
+      shiftBox("2º turno · 15h–23h59", today.b2b.shift2, 1324, 330, 382);
       drawText("ÚLTIMOS QUATRO DIAS", 70, 575, 14, colors.text, 800);
       days.slice(1).forEach((day, index) => {
         const x = 70 + index * 415;
-        rect(x, 600, 395, 145, colors.panel, colors.line, 12);
-        drawText(day.date, x + 15, 622, 13, colors.text, 900);
+        rect(x, 600, 395, 390, colors.panel, colors.line, 14);
+        drawText(day.date, x + 18, 628, 14, colors.text, 900);
+        const b2cTotal=day.b2c.shift1.products+day.b2c.shift2.products;
+        const b2bTotal=day.b2b.shift1.products+day.b2b.shift2.products;
+        rect(x+16,650,174,72,colors.background,colors.line,10);
+        rect(x+205,650,174,72,colors.background,colors.line,10);
+        drawText("TOTAL B2C",x+29,671,9,colors.muted,800);
+        drawText(fmt(b2cTotal),x+29,702,23,colors.blue,900);
+        drawText("TOTAL B2B",x+218,671,9,colors.muted,800);
+        drawText(fmt(b2bTotal),x+218,702,23,"#8b5cf6",900);
+        drawText("PRODUÇÃO POR TURNO",x+18,752,9,colors.muted,800);
         [["B2C T1", day.b2c.shift1], ["B2C T2", day.b2c.shift2], ["B2B T1", day.b2b.shift1], ["B2B T2", day.b2b.shift2]].forEach((item, row) => {
-          drawText(item[0], x + 15, 651 + row * 22, 10, colors.muted, 800);
-          drawText(fmt(item[1].products) + " prod. · " + decimalFmt(item[1].productsPerHour) + "/h · " + decimalFmt(item[1].ordersPerHour) + " ped/h", x + 90, 651 + row * 22, 10, colors.text, 700);
+          const rowY=782+row*47;
+          if(row){context.strokeStyle=colors.line;context.beginPath();context.moveTo(x+18,rowY-23);context.lineTo(x+377,rowY-23);context.stroke()}
+          drawText(item[0], x + 18, rowY, 10, item[0].startsWith("B2C")?colors.blue:"#8b5cf6", 900);
+          drawText(fmt(item[1].products)+" produtos",x+92,rowY,11,colors.text,800);
+          drawText(decimalFmt(item[1].productsPerHour)+" prod./h",x+255,rowY-8,9,colors.text,700);
+          drawText(decimalFmt(item[1].ordersPerHour)+" ped./h",x+255,rowY+9,8,colors.muted,600);
         });
       });
-      drawText("TOTAL DE PRODUTOS POR DIA", 70, 790, 14, colors.text, 800);
-      const chartDays = days.slice().reverse(), chartLeft = 100, chartRight = 1700, chartTop = 825, chartBottom = 1035;
-      const chartSeries = [
-        { color: "#2563eb", values: chartDays.map(day => day.b2c.shift1.products) },
-        { color: "#06b6d4", values: chartDays.map(day => day.b2c.shift2.products) },
-        { color: "#8b5cf6", values: chartDays.map(day => day.b2b.shift1.products) },
-        { color: "#f59e0b", values: chartDays.map(day => day.b2b.shift2.products) }
-      ];
-      const maximum = Math.max(1, ...chartSeries.flatMap(item => item.values));
-      chartSeries.forEach(item => {
-        context.beginPath(); context.strokeStyle = item.color; context.lineWidth = 4;
-        item.values.forEach((value, index) => {
-          const px = chartLeft + index * (chartRight - chartLeft) / 4, py = chartBottom - value / maximum * (chartBottom - chartTop);
-          if (index === 0) context.moveTo(px, py); else context.lineTo(px, py);
-        });
-        context.stroke();
-      });
-      chartDays.forEach((day, index) => drawText(day.date.slice(0, 5), chartLeft + index * (chartRight - chartLeft) / 4, 1060, 11, colors.muted, 700, "center"));
     }
   } else if (pageId === "page-triados") {
     rect(70, 190, 1660, 110, colors.panel, colors.line, 14);
@@ -1166,10 +1192,10 @@ function exportDetailPageImage(pageId) {
       drawText(carrierShort(item.carrier), baseX + 25, 970, 9, colors.muted, 800, "center");
     });
   } else if (pageId === "page-transportadoras") {
-    const upcoming=allUpcomingPickups(new Date()),next=upcoming[0],pending=next?pendingPickupFlow(next.carrier):[];
+    const flowGroups=pendingPickupFlowGroups(),upcoming=allUpcomingPickups(new Date()),next=upcoming[0],pending=next?pendingPickupFlow(next.carrier,flowGroups):[];
     const gradient=context.createLinearGradient(70,0,1730,0);gradient.addColorStop(0,"#15243d");gradient.addColorStop(1,"#28558f");rect(70,190,1660,150,gradient,null,16);
     drawText("PRÓXIMA TRANSPORTADORA",105,225,12,"#b8c7dc",800);drawText(next?fitText(next.carrier,900):"Nenhuma coleta cadastrada",105,270,28,"#fff",900);drawText(next?next.date.toLocaleString("pt-BR"):"Cadastre em Configurações",105,307,14,"#dbe7f7",600);drawText(next?humanDuration(next.stamp-Date.now()).replace("vence em ",""):"—",1680,255,28,"#fff",900,"right");drawText(next&&pending.length?fmt(pending.length)+" pedidos sem carga/coleta":"Nenhuma pendência crítica",1680,302,13,pending.length?"#fca5a5":"#86efac",800,"right");
-    drawText("GRADE SEMANAL",70,390,16,colors.text,900);const names=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR"));const startY=430,rowH=52;names.slice(0,11).forEach((carrier,index)=>{const y=startY+index*rowH;rect(70,y,1660,rowH-6,colors.panel,colors.line,8);drawText(fitText(carrier,370),90,y+23,11,colors.text,800);pickupDayNames.forEach((day,dayIndex)=>{drawText(fitText((pickupSchedules[carrier][String(dayIndex)]||[]).join(" / ")||"—",130),520+dayIndex*155,y+23,10,colors.muted,700,"center")});drawText(fmt(pendingPickupFlow(carrier).length)+" pend.",1705,y+23,10,colors.text,800,"right")});pickupDayNames.forEach((day,index)=>drawText(day.slice(0,3).toUpperCase(),520+index*155,410,9,colors.muted,800,"center"));
+    drawText("GRADE SEMANAL",70,390,16,colors.text,900);const names=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR"));const startY=430,rowH=52;names.slice(0,11).forEach((carrier,index)=>{const y=startY+index*rowH;rect(70,y,1660,rowH-6,colors.panel,colors.line,8);drawText(fitText(carrier,370),90,y+23,11,colors.text,800);pickupDayNames.forEach((day,dayIndex)=>{drawText(fitText((pickupSchedules[carrier][String(dayIndex)]||[]).join(" / ")||"—",130),520+dayIndex*155,y+23,10,colors.muted,700,"center")});drawText(fmt(pendingPickupFlow(carrier,flowGroups).length)+" pend.",1705,y+23,10,colors.text,800,"right")});pickupDayNames.forEach((day,index)=>drawText(day.slice(0,3).toUpperCase(),520+index*155,410,9,colors.muted,800,"center"));
   } else if (pageId === "page-io") {
     const io=calculateIo(currentMetrics),configured=ioConfig.metaB2c+ioConfig.metaB2b>0;
     const kpis=[["CONFIANÇA",io.confidence+"%",colors.blue],["TEMPO RESTANTE",clockDuration(io.shift.hours),"#8b5cf6"],["CAPACIDADE TOTAL",fmt(Math.floor(io.capacities.total)),"#22c55e"],["NECESSIDADE",fmt(Math.ceil(io.adjustedRemainingB2c+io.adjustedRemainingB2b)),"#f97316"]];
@@ -1186,25 +1212,31 @@ function exportDetailPageImage(pageId) {
     drawText("RISCO POR TRANSPORTADORA",900,370,16,colors.text,800);
     groupSlaRecords(records,"carrier").slice(0,8).forEach((group,index)=>{const y=405+index*70,c=slaCounts(group.items);rect(900,y,830,55,colors.panel,colors.line,9);drawText(fitText(group.name,370),920,y+20,12,colors.text,800);drawText(fmt(group.items.length)+" pedidos",920,y+39,10,colors.muted,600);drawText("🔴 "+fmt(c.overdue)+"   🟠 "+fmt(c.critical)+"   🟡 "+fmt(c.today)+"   🟢 "+fmt(c.safe),1705,y+28,12,colors.text,700,"right")});
   } else if (pageId === "page-pin") {
-    const cardWidth = 808, gap = 44, startX = 70, rowHeight = 38;
+    const cardWidth = 808, gap = 44, startX = 70, rowHeight = 46;
     let currentY = 195;
     for (let index = 0; index < pinGroups.length; index += 2) {
       const pair = pinGroups.slice(index, index + 2);
-      const pairHeight = Math.max(...pair.map(group => 78 + group.orders.length * rowHeight));
+      const pairHeight = Math.max(...pair.map(group => 104 + group.orders.length * rowHeight));
       pair.forEach((group, column) => {
         const x = startX + column * (cardWidth + gap);
-        const cardHeight = 78 + group.orders.length * rowHeight;
+        const cardHeight = 104 + group.orders.length * rowHeight;
         rect(x, currentY, cardWidth, cardHeight, colors.panel, colors.line, 14);
         rect(x, currentY, cardWidth, 78, colors.header, null, 14);
         drawText("CARGA", x + 20, currentY + 23, 11, "#aebbd0", 800);
         drawText(fitText(group.load, cardWidth - 150), x + 20, currentY + 51, 19, "#fff", 800);
         rect(x + cardWidth - 65, currentY + 24, 42, 30, colors.blue, null, 15);
         drawText(fmt(group.orders.length), x + cardWidth - 44, currentY + 39, 12, "#fff", 900, "center");
+        drawText("PEDIDO DE VENDA", x + 20, currentY + 91, 9, colors.muted, 800);
+        drawText("SÉRIE", x + 288, currentY + 91, 9, colors.muted, 800);
+        drawText("STATUS NF", x + 375, currentY + 91, 9, colors.muted, 800);
+        drawText("UF", x + cardWidth - 22, currentY + 91, 9, colors.muted, 800, "right");
         group.orders.forEach((item, rowIndex) => {
-          const rowY = currentY + 78 + rowIndex * rowHeight;
+          const rowY = currentY + 104 + rowIndex * rowHeight;
           if (rowIndex % 2) { context.fillStyle = colors.background; context.fillRect(x + 1, rowY, cardWidth - 2, rowHeight); }
           if (rowIndex) { context.strokeStyle = colors.line; context.beginPath(); context.moveTo(x + 15, rowY); context.lineTo(x + cardWidth - 15, rowY); context.stroke(); }
-          drawText(item.order, x + 20, rowY + rowHeight / 2, 13, colors.text, 700);
+          drawText(fitText(item.order, 245), x + 20, rowY + rowHeight / 2, 13, colors.text, 700);
+          drawText(fitText(item.series, 65), x + 288, rowY + rowHeight / 2, 12, colors.text, 700);
+          drawText(fitText(item.status, 330), x + 375, rowY + rowHeight / 2, 11, colors.text, 700);
           drawText(item.uf, x + cardWidth - 22, rowY + rowHeight / 2, 13, colors.muted, 800, "right");
         });
       });
@@ -1216,48 +1248,44 @@ function exportDetailPageImage(pageId) {
   }
   drawText("Dados processados localmente · Turno A · CD Extrema", 70, canvas.height - 35, 14, colors.muted, 500);
   canvas.toBlob(blob => {
-    if (!blob) return showToast("Não foi possível gerar a imagem.", true);
+    if (!blob) { setExportBusy(false); return showToast("Não foi possível gerar a imagem.", true); }
     const url = URL.createObjectURL(blob), link = document.createElement("a");
     link.href = url; link.download = pageId.replace("page-", "") + "-luft-" + new Date().toISOString().slice(0, 10) + ".png";
     link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setExportBusy(false);
     showToast("Imagem da tela exportada.");
   }, "image/png");
 }
 
+function setExportBusy(busy) {
+  const button=$("#export-image");
+  if(!button)return;
+  button.classList.toggle("exporting",busy);
+  button.disabled=busy;
+  button.setAttribute("aria-busy",String(busy));
+  const label=button.querySelector("span:nth-child(2)");
+  if(label)label.textContent=busy?"Gerando…":"Exportar";
+}
+
+function closeExportMenu(){const control=$("#export-control"),button=$("#export-image");if(!control||!button)return;control.classList.remove("open");button.setAttribute("aria-expanded","false")}
+
 function exportCurrentPageImage() {
   if (!currentMetrics.fileName) return showToast("Importe um CSV antes de exportar a imagem.", true);
+  closeExportMenu();setExportBusy(true);
   const activePage = document.querySelector(".page.active");
   if (!activePage || activePage.id === "page-dashboard") return exportDashboardImage();
   exportDetailPageImage(activePage.id);
 }
 
-$("#csv-input").addEventListener("change", event => {
-  const file = event.target.files[0];
-  if (!file) return;
-  $("#processing").classList.add("show");
-  const reader = new FileReader();
-  reader.onload = () => setTimeout(async () => {
-    try {
-      currentMetrics = await calculateMetricsAsync(String(reader.result), file.name);
-      render(currentMetrics);
-      showToast(fmt(currentMetrics.recordCount) + " registros analisados com sucesso.");
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || "Não foi possível processar o CSV.", true);
-    } finally {
-      $("#processing").classList.remove("show");
-      event.target.value = "";
-    }
-  }, 30);
-  reader.onerror = () => {
-    $("#processing").classList.remove("show");
-    showToast("Falha ao ler o arquivo.", true);
-  };
-  reader.readAsText(file);
-});
+function validateCsvFile(file){if(!file)return"Nenhum arquivo foi selecionado.";if(!/\.csv$/i.test(file.name))return"Selecione um arquivo com extensão .csv.";if(!file.size)return"O arquivo CSV está vazio.";if(file.size>200*1024*1024)return"O arquivo excede o limite local de 200 MB.";return""}
+$("#csv-input").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;$("#processing").classList.add("show");$("#processing-title").textContent="Processando CSV…";$("#processing-detail").textContent="A análise está sendo executada localmente; nenhum dado será enviado.";$("#processing-steps").innerHTML="";try{const validationError=validateCsvFile(file);if(validationError)throw new Error(validationError);const buffer=await file.arrayBuffer();const metrics=await calculateMetricsAsync(buffer,file.name);currentMetrics=metrics;render(currentMetrics);showToast(fmt(metrics.recordCount)+" registros analisados com sucesso.")}catch(error){console.error(error);showToast(error.message||"Não foi possível processar o CSV.",true)}finally{$("#processing").classList.remove("show");event.target.value=""}});
 
 $("#export-summary").addEventListener("click", exportSummary);
-$("#export-image").addEventListener("click", exportCurrentPageImage);
+$("#export-image").addEventListener("click",event=>{event.stopPropagation();const control=$("#export-control"),open=control.classList.toggle("open");$("#export-image").setAttribute("aria-expanded",String(open))});
+$("#export-current-page").addEventListener("click",exportCurrentPageImage);
+$("#export-dashboard").addEventListener("click",()=>{if(!currentMetrics.fileName)return showToast("Importe um CSV antes de exportar a imagem.",true);closeExportMenu();setExportBusy(true);exportDashboardImage()});
+$("#export-menu").addEventListener("click",event=>event.stopPropagation());
+document.addEventListener("click",closeExportMenu);
 document.querySelectorAll(".sla-kpi").forEach(card => card.addEventListener("click", () => {
   slaUi.status = card.dataset.slaStatus === "all" ? "" : card.dataset.slaStatus;
   $("#sla-filter").value = slaUi.status; renderSlaCentral(false);
@@ -1281,10 +1309,10 @@ $("#war-mode").addEventListener("click", () => {
 });
 $("#sla-groups").addEventListener("click",event=>{const button=event.target.closest("[data-sla-group-index]");if(button){const group=slaUi.visibleGroups[Number(button.dataset.slaGroupIndex)];openSlaDrawer(group.items,group.name)}});
 $("#sla-priorities").addEventListener("click",event=>{const button=event.target.closest("[data-sla-priority-index]");if(button){const group=slaUi.priorityGroups[Number(button.dataset.slaPriorityIndex)];openSlaDrawer(group.items,group.load+" · "+carrierShort(group.carrier))}});
-$("#sla-drawer-body").addEventListener("click",event=>{const button=event.target.closest("[data-sla-record-index]");if(button)showSlaRecord(Number(button.dataset.slaRecordIndex))});
+$("#sla-drawer-body").addEventListener("click",event=>{const more=event.target.closest("#sla-drawer-more");if(more){slaUi.drawerPage++;return renderSlaDrawerPage()}const button=event.target.closest("[data-sla-record-index]");if(button)showSlaRecord(Number(button.dataset.slaRecordIndex))});
 $("#sla-drawer-close").addEventListener("click",closeSlaDrawer); $("#sla-drawer-backdrop").addEventListener("click",()=>{closeSlaDrawer();if(typeof closeIoSettings==="function")closeIoSettings()});
-document.addEventListener("keydown",event=>{if(event.key==="Escape"){closeSlaDrawer();if(typeof closeIoSettings==="function")closeIoSettings()}});
-setInterval(()=>{if(currentMetrics.slaRecords.length)renderSlaCentral(false);if(currentMetrics.fileName){renderIo(currentMetrics);renderPickupDashboard()}},60000);
+document.addEventListener("keydown",event=>{if(event.key==="Escape"){closeSlaDrawer();closeExportMenu();if(typeof closeIoSettings==="function")closeIoSettings()}});
+setInterval(()=>{if(!currentMetrics.fileName||document.hidden)return;const page=document.querySelector(".page.active")?.id;if(page==="page-faturamento"&&currentMetrics.slaRecords.length)renderSlaCentral(false);else if(page==="page-io")renderIo(currentMetrics);else if(page==="page-transportadoras")renderPickupDashboard()},60000);
 renderProfileChecks();populateProfileCarriers();renderSlaProfileList();clearProfileForm();
 const ioInputs={metaB2c:"#io-meta-b2c",metaB2b:"#io-meta-b2b",rateSepB2c:"#io-rate-sep-b2c",rateFatB2c:"#io-rate-fat-b2c",rateSepB2b:"#io-rate-sep-b2b",rateFatB2b:"#io-rate-fat-b2b",teamSepB2c:"#io-team-sep-b2c",teamFatB2c:"#io-team-fat-b2c",teamSepB2b:"#io-team-sep-b2b",teamFatB2b:"#io-team-fat-b2b"};
 function closeIoSettings(){$("#io-settings").classList.remove("show");$("#sla-drawer-backdrop").classList.remove("show")}
@@ -1321,6 +1349,7 @@ document.querySelectorAll(".nav-item").forEach(button => button.addEventListener
   const title = button.childNodes[1].textContent.trim();
   $("#page-title").textContent = title;
   $("#breadcrumb").textContent = title.toUpperCase();
+  if($("#export-current-label"))$("#export-current-label").textContent=title;
   $("#sidebar").classList.remove("open");
   $("#scrim").classList.remove("show");
 }));
