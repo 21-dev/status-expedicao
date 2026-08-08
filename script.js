@@ -354,6 +354,35 @@ function calculateMetrics(csvText, fileName) {
   return metrics;
 }
 
+function calculateMetricsAsync(csvText, fileName) {
+  if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") {
+    return Promise.resolve().then(() => calculateMetrics(csvText, fileName));
+  }
+  const workerSource = [
+    '"use strict";',
+    'const zeroSummary = ' + zeroSummary.toString() + ';',
+    createEmptyMetrics.toString(),
+    normalizeHeader.toString(),
+    forEachCsvRow.toString(),
+    parseBrazilianDateTime.toString(),
+    operationalSector.toString(),
+    calculateMetrics.toString(),
+    'self.onmessage = function(event) { try { self.postMessage({ ok:true, metrics:calculateMetrics(event.data.csvText,event.data.fileName) }); } catch (error) { self.postMessage({ ok:false, message:error && error.message ? error.message : String(error) }); } };'
+  ].join("\n");
+  const workerUrl = URL.createObjectURL(new Blob([workerSource], { type:"text/javascript" }));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(workerUrl);
+    const finish = () => { worker.terminate(); URL.revokeObjectURL(workerUrl); };
+    worker.onmessage = event => {
+      finish();
+      if (event.data && event.data.ok) resolve(event.data.metrics);
+      else reject(new Error(event.data && event.data.message || "Falha ao processar o CSV."));
+    };
+    worker.onerror = event => { finish(); reject(new Error(event.message || "Falha ao iniciar o processamento em segundo plano.")); };
+    worker.postMessage({ csvText, fileName });
+  });
+}
+
 function summaryHtml(data) {
   return [
     ["Pedidos de venda", data.orders], ["Qtde. total de produto", data.products], ["Qtde. de volumes", data.volumes]
@@ -1207,9 +1236,9 @@ $("#csv-input").addEventListener("change", event => {
   if (!file) return;
   $("#processing").classList.add("show");
   const reader = new FileReader();
-  reader.onload = () => setTimeout(() => {
+  reader.onload = () => setTimeout(async () => {
     try {
-      currentMetrics = calculateMetrics(String(reader.result), file.name);
+      currentMetrics = await calculateMetricsAsync(String(reader.result), file.name);
       render(currentMetrics);
       showToast(fmt(currentMetrics.recordCount) + " registros analisados com sucesso.");
     } catch (error) {
@@ -1233,8 +1262,14 @@ document.querySelectorAll(".sla-kpi").forEach(card => card.addEventListener("cli
   slaUi.status = card.dataset.slaStatus === "all" ? "" : card.dataset.slaStatus;
   $("#sla-filter").value = slaUi.status; renderSlaCentral(false);
 }));
+let slaSearchTimer = 0;
 ["#sla-search","#sla-group","#sla-carrier","#sla-wave","#sla-load","#sla-order-status","#sla-service","#sla-series","#sla-filter","#sla-date","#sla-shift"].forEach(selector => {
-  $(selector).addEventListener(selector === "#sla-search" ? "input" : "change", () => { if (selector === "#sla-filter") slaUi.status = $(selector).value; renderSlaCentral(false); });
+  $(selector).addEventListener(selector === "#sla-search" ? "input" : "change", () => {
+    if (selector === "#sla-filter") slaUi.status = $(selector).value;
+    if (selector !== "#sla-search") return renderSlaCentral(false);
+    clearTimeout(slaSearchTimer);
+    slaSearchTimer = setTimeout(() => renderSlaCentral(false), 180);
+  });
 });
 $("#sla-clear").addEventListener("click", () => {
   $("#sla-search").value=""; ["#sla-carrier","#sla-wave","#sla-load","#sla-order-status","#sla-service","#sla-series","#sla-filter","#sla-date","#sla-shift"].forEach(selector=>$(selector).value="");
