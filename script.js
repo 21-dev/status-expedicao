@@ -1,27 +1,68 @@
 "use strict";
 
+/**
+ * LUFT · Status Operacional
+ *
+ * MAPA DE MANUTENÇÃO
+ * 1. Acesso e Supabase: autenticação, papéis e sincronização das configurações.
+ * 2. Importação do CSV: leitura, normalização, deduplicação e cálculo de métricas.
+ * 3. Renderização: Dashboard, GEMBA, Central SLA, Conferência e Coletas.
+ * 4. Perfis SLA: cadastro da regra V5 e cálculo do prazo de cada serviço.
+ * 5. Exportações: textos, CSV e imagens gerados localmente pelo navegador.
+ * 6. Eventos e navegação: listeners, rotas por hash e inicialização da aplicação.
+ *
+ * CONVENÇÕES IMPORTANTES
+ * - Dados operacionais do CSV permanecem no navegador; apenas configurações são
+ *   sincronizadas com o Supabase.
+ * - Comparações de textos operacionais devem passar por normalizeHeader() ou
+ *   normalizeSlaCentralValue() para tolerar acentos, espaços e mojibake.
+ * - A Central SLA usa o fuso America/Sao_Paulo. Não substitua os helpers de data
+ *   por Date local sem validar virada de dia e horário de verão.
+ */
+
 const $ = (selector) => document.querySelector(selector);
+
+/* ===================== ACESSO E SINCRONIZAÇÃO ===================== */
+
+// A chave anon é pública por definição; a autorização de escrita deve permanecer protegida por RLS no Supabase.
 const SUPABASE_CONFIG={url:"https://ywicdcngxlagtkjbfjep.supabase.co",anonKey:"sb_publishable_R_TpeEkM0E9j3LVhW9OMhw_ZAP0mBaC"};
-const cloudState={client:null,user:null,isManager:false,syncing:false,lastSync:null,gatewayRequired:true};
+const cloudState={client:null,user:null,role:"operation",isManager:false,syncing:false,lastSync:null,gatewayRequired:true};
+const ACCESS_LEVELS={operation:0,leader:1,manager:2,admin:3};
+function accessLevel(role){return ACCESS_LEVELS[role]??ACCESS_LEVELS.operation}
+function hasAccess(required){return accessLevel(cloudState.role)>=accessLevel(required||"operation")}
+function ensureUnifiedNavigation(){
+  const sidebar=$("#sidebar"),operationTitle=sidebar?.querySelector(".nav-title"),operationNav=operationTitle?.nextElementSibling,managerNavigation=$("#manager-navigation");
+  if(!sidebar||!operationTitle||!operationNav||!managerNavigation||sidebar.querySelector(".command-navigation"))return;
+  operationTitle.textContent="CENTRAL DE COMANDO";
+  const commandNav=document.createElement("nav"),dashboardButton=operationNav.querySelector('[data-page="dashboard"]'),gembaButton=operationNav.querySelector('[data-page="gemba"]');
+  commandNav.className="command-navigation";operationTitle.after(commandNav);if(dashboardButton)commandNav.append(dashboardButton);if(gembaButton)commandNav.append(gembaButton)
+  const operationLabel=document.createElement("p");operationLabel.className="nav-title";operationLabel.textContent="OPERAÇÃO";commandNav.after(operationLabel);operationLabel.after(operationNav);
+  managerNavigation.querySelector(".nav-title").textContent="ADMINISTRAÇÃO";
+}
 function createAccessGateway(){if($("#access-gateway"))return;const logo=document.querySelector(".brand .logo")?.src||"";document.body.insertAdjacentHTML("beforeend",'<div class="access-gateway show" id="access-gateway"><div class="gateway-shell"><section class="gateway-copy"><img class="gateway-logo" src="'+logo+'" alt="Luft"><small>LUFT · STATUS OPERACIONAL</small><h1>Como você deseja acessar?</h1><p>Escolha o ambiente adequado para sua rotina. O modo Operação mantém o painel simples e seguro; o modo Gestor libera os controles administrativos.</p></section><section class="gateway-modes"><button class="gateway-mode" id="gateway-operation"><span class="gateway-icon">▦</span><span><strong>Entrar no Modo Operação</strong><small>Visualizar indicadores, importar CSV, pesquisar pedidos e exportar relatórios. Não exige login.</small></span><span class="gateway-arrow">→</span></button><button class="gateway-mode manager" id="gateway-manager"><span class="gateway-icon">⚙</span><span><strong>Entrar como Gestor</strong><small>Visualização completa, configurações, perfis de SLA, metas e sincronização com o banco.</small></span><span class="gateway-arrow">→</span></button><div class="gateway-foot">As permissões de edição são validadas pelo Supabase.</div></section></div></div>');const right=$(".header-right");if(right&&!$("#operation-ribbon"))right.insertAdjacentHTML("afterbegin",'<span class="mode-ribbon operation" id="operation-ribbon">● Operação · leitura</span><span class="mode-ribbon manager" id="manager-ribbon">● Gestor · edição</span>');$("#gateway-operation").addEventListener("click",enterOperationMode);$("#gateway-manager").addEventListener("click",()=>{$("#access-gateway").classList.remove("show");showAuthModal()})}
-function enterOperationMode(){cloudState.gatewayRequired=false;sessionStorage.setItem("luft-access-mode","operation");cloudState.isManager=false;applyAccessMode();$("#access-gateway")?.classList.remove("show");hideAuthModal();showToast("Modo Operação ativo · acesso somente visual.")}
+function enterOperationMode(){cloudState.gatewayRequired=false;sessionStorage.setItem("luft-access-mode","operation");cloudState.role="operation";cloudState.isManager=false;applyAccessMode();$("#access-gateway")?.classList.remove("show");hideAuthModal();showToast("Modo Operação ativo · acesso somente visual.")}
 function enterManagerMode(){cloudState.gatewayRequired=false;sessionStorage.setItem("luft-access-mode","manager");applyAccessMode();$("#access-gateway")?.classList.remove("show");hideAuthModal()}
 function showAccessGateway(){cloudState.gatewayRequired=true;$("#auth-backdrop")?.classList.remove("show");$("#access-gateway")?.classList.add("show")}
 function supabaseConfigured(){return /^https:\/\/.+\.supabase\.co$/.test(SUPABASE_CONFIG.url)&&SUPABASE_CONFIG.anonKey&&!SUPABASE_CONFIG.anonKey.startsWith("COLE_AQUI")&&window.supabase}
 function ensureDatabaseStatusUi(){if($("#database-status-title"))return;const page=$("#page-configuracoes"),intro=page&&page.querySelector(".intro");if(!page||!intro)return;intro.insertAdjacentHTML("afterend",'<article class="card database-status"><div class="database-status-icon">☁</div><div><small>SUPABASE</small><strong id="database-status-title">Banco não configurado</strong><p id="database-status-detail">Informe a URL e a chave pública no bloco SUPABASE_CONFIG do arquivo.</p></div><button class="btn secondary" id="database-sync">Sincronizar agora</button></article>')}
 function updateDatabaseStatus(title,detail){ensureDatabaseStatusUi();if($("#database-status-title"))$("#database-status-title").textContent=title;if($("#database-status-detail"))$("#database-status-detail").textContent=detail}
-function showAuthModal(){const manager=cloudState.isManager;$("#auth-backdrop").classList.add("show");$("#manager-login-form").hidden=manager;$("#auth-session").hidden=!manager;if(manager)$("#auth-session-email").textContent=cloudState.user.email||"Gestor"}
+function showAuthModal(){const authenticated=hasAccess("leader");$("#auth-backdrop").classList.add("show");$("#manager-login-form").hidden=authenticated;$("#auth-session").hidden=!authenticated;if(authenticated)$("#auth-session-email").textContent=cloudState.user?.email||"Usuário autenticado"}
 function hideAuthModal(){$("#auth-backdrop").classList.remove("show");$("#auth-error").textContent=""}
 function closeAuthModal(){if(cloudState.gatewayRequired)showAccessGateway();else hideAuthModal()}
-function applyAccessMode(){const manager=cloudState.isManager;$("#manager-navigation").hidden=!manager;$("#access-avatar").textContent=manager?"GE":"OP";$("#access-name").textContent=manager?(cloudState.user.user_metadata?.name||cloudState.user.email||"Gestor"):"Modo Operação";$("#access-role").textContent=manager?"Gestor · configurações liberadas":"Acesso visual";document.body.dataset.access=manager?"manager":"operation";["#io-open-settings","#pickup-go-settings"].forEach(selector=>{const element=$(selector);if(element)element.hidden=!manager});if(!manager&&["page-io","page-configuracoes","page-sla-profiles"].includes(document.querySelector(".page.active")?.id)){document.querySelector('.nav-item[data-page="dashboard"]')?.click()}}
-async function verifyManager(user){if(!user||!cloudState.client)return false;const {data,error}=await cloudState.client.from("manager_profiles").select("role,active").eq("user_id",user.id).maybeSingle();return !error&&data&&data.active&&data.role==="manager"}
-async function applyCloudSettings(rows){const map=Object.fromEntries((rows||[]).map(row=>[row.setting_key,row.payload]));if(Array.isArray(map.sla_profiles)){slaProfiles=map.sla_profiles;localStorage.setItem("luft-sla-profiles-v1",JSON.stringify(slaProfiles))}if(map.pickup_schedules&&typeof map.pickup_schedules==="object"){pickupSchedules=map.pickup_schedules;localStorage.setItem("luft-pickup-schedules",JSON.stringify(pickupSchedules))}if(map.io_config&&typeof map.io_config==="object"){ioConfig={...ioDefaults,...map.io_config};localStorage.setItem("luft-io-config",JSON.stringify(ioConfig))}invalidateOperationalCaches();render(currentMetrics)}
+function applyAccessMode(){const manager=cloudState.isManager,authenticated=hasAccess("leader"),roleLabels={operation:"Operação",leader:"Líder",manager:"Gestor",admin:"Administrador"};$("#manager-navigation").hidden=!manager;document.querySelectorAll("[data-min-role]").forEach(element=>element.hidden=!hasAccess(element.dataset.minRole));$("#access-avatar").textContent=manager?(cloudState.role==="admin"?"AD":"GE"):authenticated?"LI":"OP";$("#access-name").textContent=authenticated?(cloudState.user?.user_metadata?.name||cloudState.user?.email||roleLabels[cloudState.role]):"Modo Operação";$("#access-role").textContent=authenticated?roleLabels[cloudState.role]+" · acesso autenticado":"Acesso visual";document.body.dataset.access=cloudState.role;const pickupSettings=$("#pickup-go-settings");if(pickupSettings)pickupSettings.hidden=!manager;const active=document.querySelector(".page.active"),required=active?.dataset.minRole||(active&&["page-configuracoes","page-sla-profiles"].includes(active.id)?"manager":"operation");if(active&&!hasAccess(required))navigateToPage("dashboard",{replaceHash:true});if($("#gemba-goals-form"))updateGembaGoalAccess()}
+async function verifyAccessProfile(user){if(!user||!cloudState.client)return"operation";const {data,error}=await cloudState.client.from("manager_profiles").select("role,active").eq("user_id",user.id).maybeSingle();if(error||!data?.active)return"operation";return Object.prototype.hasOwnProperty.call(ACCESS_LEVELS,data.role)?data.role:"operation"}
+async function verifyManager(user){return accessLevel(await verifyAccessProfile(user))>=accessLevel("manager")}
+async function applyCloudSettings(rows){const map=Object.fromEntries((rows||[]).map(row=>[row.setting_key,row.payload]));if(Array.isArray(map.sla_profiles)){slaProfiles=map.sla_profiles;localStorage.setItem("luft-sla-profiles-v1",JSON.stringify(slaProfiles))}if(map.pickup_schedules&&typeof map.pickup_schedules==="object"){pickupSchedules=map.pickup_schedules;localStorage.setItem("luft-pickup-schedules",JSON.stringify(pickupSchedules))}const cloudGemba=map.gemba_config;if(cloudGemba&&typeof cloudGemba==="object"){gembaConfig=sanitizeGembaConfig(cloudGemba);localStorage.setItem("luft-gemba-config",JSON.stringify(gembaConfig))}invalidateOperationalCaches();render(currentMetrics)}
 async function pullCloudSettings(showMessage){if(!cloudState.client)return false;cloudState.syncing=true;updateDatabaseStatus("Sincronizando…","Buscando as configurações operacionais do banco.");const {data,error}=await cloudState.client.from("system_settings").select("setting_key,payload,updated_at");cloudState.syncing=false;if(error){updateDatabaseStatus("Falha na sincronização",error.message);if(showMessage)showToast("Não foi possível sincronizar com o banco.",true);return false}await applyCloudSettings(data);cloudState.lastSync=new Date();updateDatabaseStatus("Banco conectado","Última sincronização às "+cloudState.lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));if(showMessage)showToast("Configurações sincronizadas com o Supabase.");return true}
 async function pushCloudSetting(key,payload){if(!cloudState.client||!cloudState.isManager)return false;const {error}=await cloudState.client.from("system_settings").upsert({setting_key:key,payload,updated_by:cloudState.user.id},{onConflict:"setting_key"});if(error){showToast("Alteração salva localmente, mas não sincronizada: "+error.message,true);return false}cloudState.lastSync=new Date();updateDatabaseStatus("Banco conectado","Alteração sincronizada às "+cloudState.lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));return true}
-async function syncAllSettings(){if(!cloudState.client)return showToast("Configure o Supabase antes de sincronizar.",true);if(!cloudState.isManager)return pullCloudSettings(true);updateDatabaseStatus("Sincronizando…","Enviando as configurações locais e conferindo o banco.");const rows=[{setting_key:"sla_profiles",payload:slaProfiles,updated_by:cloudState.user.id},{setting_key:"pickup_schedules",payload:pickupSchedules,updated_by:cloudState.user.id},{setting_key:"io_config",payload:ioConfig,updated_by:cloudState.user.id}];const {error}=await cloudState.client.from("system_settings").upsert(rows,{onConflict:"setting_key"});if(error){updateDatabaseStatus("Falha na sincronização",error.message);return showToast("Não foi possível sincronizar as configurações.",true)}await pullCloudSettings(false);showToast("Todas as configurações foram sincronizadas.")}
-async function initializeSupabase(){ensureDatabaseStatusUi();const savedMode=sessionStorage.getItem("luft-access-mode");if(!supabaseConfigured()){updateDatabaseStatus("Banco aguardando configuração","Cole a URL do projeto e a chave pública anon no bloco SUPABASE_CONFIG.");applyAccessMode();if(savedMode==="operation")enterOperationMode();else showAccessGateway();return}cloudState.client=window.supabase.createClient(SUPABASE_CONFIG.url,SUPABASE_CONFIG.anonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});const {data:{session}}=await cloudState.client.auth.getSession();cloudState.user=session?.user||null;cloudState.isManager=await verifyManager(cloudState.user);applyAccessMode();await pullCloudSettings(false);if(cloudState.isManager)enterManagerMode();else if(savedMode==="operation")enterOperationMode();else showAccessGateway();cloudState.client.auth.onAuthStateChange(async(event,sessionValue)=>{cloudState.user=sessionValue?.user||null;cloudState.isManager=await verifyManager(cloudState.user);applyAccessMode()})}
+async function syncAllSettings(){if(!cloudState.client)return showToast("Configure o Supabase antes de sincronizar.",true);if(!cloudState.isManager)return pullCloudSettings(true);updateDatabaseStatus("Sincronizando…","Enviando as configurações locais e conferindo o banco.");const rows=[{setting_key:"sla_profiles",payload:slaProfiles,updated_by:cloudState.user.id},{setting_key:"pickup_schedules",payload:pickupSchedules,updated_by:cloudState.user.id},{setting_key:"gemba_config",payload:gembaConfig,updated_by:cloudState.user.id}];const {error}=await cloudState.client.from("system_settings").upsert(rows,{onConflict:"setting_key"});if(error){updateDatabaseStatus("Falha na sincronização",error.message);return showToast("Não foi possível sincronizar as configurações.",true)}await pullCloudSettings(false);showToast("Todas as configurações foram sincronizadas.")}
+async function initializeSupabase(){ensureDatabaseStatusUi();const savedMode=sessionStorage.getItem("luft-access-mode");if(!supabaseConfigured()){updateDatabaseStatus("Banco aguardando configuração","Cole a URL do projeto e a chave pública anon no bloco SUPABASE_CONFIG.");applyAccessMode();if(savedMode==="operation")enterOperationMode();else showAccessGateway();return}cloudState.client=window.supabase.createClient(SUPABASE_CONFIG.url,SUPABASE_CONFIG.anonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});const {data:{session}}=await cloudState.client.auth.getSession();cloudState.user=session?.user||null;cloudState.role=await verifyAccessProfile(cloudState.user);cloudState.isManager=hasAccess("manager");applyAccessMode();await pullCloudSettings(false);if(hasAccess("leader"))enterManagerMode();else if(savedMode==="operation")enterOperationMode();else showAccessGateway();cloudState.client.auth.onAuthStateChange(async(event,sessionValue)=>{cloudState.user=sessionValue?.user||null;cloudState.role=await verifyAccessProfile(cloudState.user);cloudState.isManager=hasAccess("manager");applyAccessMode()})}
+
+/* ===================== ESTADO OPERACIONAL E PERSISTÊNCIA ===================== */
+
 const fmt = (value) => Number(value || 0).toLocaleString("pt-BR");
 const zeroSummary = () => ({ orders: 0, products: 0, volumes: 0 });
+function greetingForTime(referenceDate=new Date()){const hour=referenceDate.getHours();return hour<12?"Bom dia":hour<18?"Boa tarde":"Boa noite"}
 let currentMetrics = createEmptyMetrics();
 let slaRuntimeCache={metrics:null,profiles:null,pickups:null,minute:-1,records:[]};
 function invalidateOperationalCaches(){slaRuntimeCache={metrics:null,profiles:null,pickups:null,minute:-1,records:[]}}
@@ -32,7 +73,8 @@ function createEmptyMetrics() {
     recordCount: 0, receivedRows: 0, rejectedRows: 0, fileName: "", importedAt: "", triagedSummary: zeroSummary(),
     withoutPdfSummary: zeroSummary(), dispatchedToday: zeroSummary(), dispatchedYesterday: zeroSummary(),
     b2cHourly: [], b2bHourly: [], pinDetails: [], lastDispatch: null, d1Date: "",
-    triagedByCarrier: [], productivity: { days: [] }, slaRecords: [], ioOrders: []
+    triagedByCarrier: [], productivity: { days: [] }, slaRecords: [], gembaOrders: [], slaCentralRecords: [],
+    slaCentralDiagnostics: { missingColumns:[], invalidDates:0, unknownStatuses:{}, duplicateRows:0 }
   };
 }
 
@@ -44,6 +86,7 @@ function normalizeHeader(value) {
 let pickupSchedules = loadPickupSchedules();
 let slaProfiles = loadSlaProfiles();
 const pickupDayNames = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+// As mesmas chaves locais são mantidas por compatibilidade com instalações já em uso.
 function loadPickupSchedules(){try{return JSON.parse(localStorage.getItem("luft-pickup-schedules")||"{}")||{}}catch(error){return {}}}
 function savePickupSchedules(){invalidateOperationalCaches();localStorage.setItem("luft-pickup-schedules",JSON.stringify(pickupSchedules));pushCloudSetting("pickup_schedules",pickupSchedules)}
 function loadSlaProfiles(){try{const data=JSON.parse(localStorage.getItem("luft-sla-profiles-v1")||"[]");return Array.isArray(data)?data:[]}catch(error){return []}}
@@ -51,19 +94,88 @@ function saveSlaProfiles(){invalidateOperationalCaches();localStorage.setItem("l
 function validPickupTimes(value){return Array.from(new Set(String(value||"").split(/[,;\s]+/).map(item=>item.trim()).filter(item=>/^([01]\d|2[0-3]):[0-5]\d$/.test(item)))).sort()}
 function carrierSchedule(carrier){const exact=pickupSchedules[carrier];if(exact)return exact;const key=Object.keys(pickupSchedules).find(name=>normalizeHeader(name)===normalizeHeader(carrier));return key?pickupSchedules[key]:null}
 function nextPickupForCarrier(carrier,afterDate){const schedule=carrierSchedule(carrier);if(!schedule)return null;const after=new Date(afterDate);for(let offset=0;offset<15;offset++){const day=new Date(after);day.setDate(day.getDate()+offset);day.setHours(0,0,0,0);const times=schedule[String(day.getDay())]||[];for(const time of times){const [hour,minute]=time.split(":").map(Number),candidate=new Date(day);candidate.setHours(hour,minute,0,0);if(candidate>after)return candidate}}return null}
-function normalizedListIncludes(list,value){const target=normalizeHeader(value);return (list||[]).some(item=>normalizeHeader(item)===target)}
-function profileMatchesRecord(profile,record){if(!profile||!profile.active)return false;const match=profile.match||{},legacyUsesService=profile.schemaVersion>=2||Array.isArray(match.services)||match.allServices!==undefined,mode=match.mode||(legacyUsesService?"service":"carrier"),carrierOk=Boolean(match.allCarriers)||normalizedListIncludes(match.carriers,record.carrier),serviceOk=Boolean(match.allServices)||normalizedListIncludes(match.services,record.service);const associationOk=mode==="carrier"?carrierOk:mode==="both"?carrierOk&&serviceOk:mode==="either"?carrierOk||serviceOk:serviceOk;const seriesOk=(match.series||[]).includes("Todas")||(match.series||[]).includes(record.series);const statusOk=normalizedListIncludes(match.statuses,record.status);return associationOk&&seriesOk&&statusOk}
-function matchingSlaProfile(record){return slaProfiles.filter(profile=>profileMatchesRecord(profile,record)).sort((a,b)=>(Number(a.priority)||9999)-(Number(b.priority)||9999)||String(a.name).localeCompare(String(b.name),"pt-BR"))[0]||null}
-function profileOrigin(profile,record){const source=(profile.rule||{}).source;const map={imported:record.importedStamp,billed:record.billedStamp,conference:record.conferenceStamp,other:record.registeredStamp};const stamp=map[source];return stamp?new Date(stamp):null}
-function dateKey(date){return String(date.getDate()).padStart(2,"0")+"/"+String(date.getMonth()+1).padStart(2,"0")+"/"+date.getFullYear()}
-function isProfileBusinessDay(date,profile){const calendar=profile.calendar||{},days=calendar.businessDays||[];return days.includes(date.getDay())&&!(calendar.holidayDates||[]).includes(dateKey(date))}
-function nextProfileBusinessDay(date,amount,profile){const result=new Date(date);let remaining=amount==null?1:amount,guard=0;while(remaining>0&&guard++<370){result.setDate(result.getDate()+1);if(isProfileBusinessDay(result,profile))remaining--}return result}
-function setProfileTime(date,time,fallback){const result=new Date(date),parts=String(time||fallback||"23:59").split(":").map(Number);result.setHours(parts[0]||0,parts[1]||0,0,0);return result}
-function afterProfileCutoff(date,cutoff){const parts=String(cutoff||"23:59").split(":").map(Number);return date.getHours()*60+date.getMinutes()>(parts[0]||0)*60+(parts[1]||0)}
-function calculateProfileDue(profile,record){const rule=profile.rule||{},origin=profileOrigin(profile,record);if(!origin)return null;let due;if(rule.type==="hours")due=new Date(origin.getTime()+Math.max(0,Number(rule.hours)||0)*3600000);else if(rule.type==="same_day"){const same=isProfileBusinessDay(origin,profile)&&!afterProfileCutoff(origin,rule.cutoff);due=setProfileTime(same?origin:nextProfileBusinessDay(origin,1,profile),rule.deadlineTime,"23:59")}else if(rule.type==="next_business_day"){due=setProfileTime(nextProfileBusinessDay(origin,afterProfileCutoff(origin,rule.cutoff)?2:1,profile),rule.deadlineTime,"23:59")}else if(rule.type==="fixed_date"){const parts=String(rule.fixedDate||"").split("-").map(Number);if(parts.length!==3||!parts[0])return null;due=setProfileTime(new Date(parts[0],parts[1]-1,parts[2]),rule.fixedTime,"23:59")}else if(rule.type==="custom"){due=new Date(origin);due.setDate(due.getDate()+Math.max(0,Number(rule.offsetDays)||0));due=new Date(due.getTime()+Math.max(0,Number(rule.offsetHours)||0)*3600000);if(rule.deadlineTime)due=setProfileTime(due,rule.deadlineTime);if(!isProfileBusinessDay(due,profile))due=setProfileTime(nextProfileBusinessDay(due,1,profile),rule.deadlineTime,"23:59")}else return null;return Number.isNaN(due.getTime())?null:due}
-function effectiveSlaDeadline(record,profile){const base=calculateProfileDue(profile,record);if(!base)return null;const origin=profileOrigin(profile,record),pickup=nextPickupForCarrier(record.carrier,origin||new Date());return pickup&&pickup<base?{due:pickup.getTime(),pickup:pickup.getTime(),source:"Coleta programada · antes do perfil "+profile.name}:{due:base.getTime(),pickup:pickup?pickup.getTime():null,source:"Perfil "+profile.name}}
-function profileAlertMinutes(profile){const values=((profile.alerts||{}).thresholdMinutes||[]).map(Number).filter(value=>value>0);return values.length?Math.max(...values):0}
 
+/* ===================== REGRA DE PERFIL SLA V5 ===================== */
+
+function normalizedListIncludes(list,value){
+  const target=normalizeHeader(value);
+  return (list||[]).some(item=>normalizeHeader(item)===target);
+}
+// Os fallbacks em match/rule permitem abrir perfis V3/V4 sem migração destrutiva.
+function profileServiceValues(profile){
+  if(Array.isArray(profile?.services))return profile.services;
+  if(Array.isArray(profile?.match?.services))return profile.match.services;
+  return [];
+}
+function profileCutoff(profile){
+  const value=profile?.cutoff||profile?.rule?.cutoff||"20:00";
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value)?value:"20:00";
+}
+function profileDeadlineTime(profile){
+  const value=profile?.deadlineTime||profile?.rule?.deadlineTime||"23:59";
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value)?value:"23:59";
+}
+function profileDispatchDay(profile){
+  const legacyNextDay=profile?.rule?.type==="next_business_day";
+  const value=profile?.dispatchDay||(legacyNextDay?"next_day":"same_day");
+  return value==="next_day"?"next_day":"same_day";
+}
+function profileMatchesRecord(profile,record){
+  return Boolean(profile&&profile.active&&profileServiceValues(profile).length&&normalizedListIncludes(profileServiceValues(profile),record.service));
+}
+function matchingSlaProfile(record){
+  return slaProfiles
+    .filter(profile=>profileMatchesRecord(profile,record))
+    .sort((a,b)=>(Number(a.priority)||9999)-(Number(b.priority)||9999)||String(a.name).localeCompare(String(b.name),"pt-BR"))[0]||null;
+}
+function dateKey(date){return String(date.getDate()).padStart(2,"0")+"/"+String(date.getMonth()+1).padStart(2,"0")+"/"+date.getFullYear()}
+
+/**
+ * Calcula o prazo final de um pedido a partir do perfil que corresponde ao serviço.
+ *
+ * Regra V5 (dias corridos):
+ * - base "Mesmo dia": dentro do corte = D0; após o corte = D+1.
+ * - base "Dia seguinte": dentro do corte = D+1; após o corte = D+2.
+ * - sem perfil: importação + 48 horas exatas.
+ *
+ * O vencimento ocorre no último segundo do minuto configurado. Ex.: 18:00 aceita
+ * o pedido até 18:00:59 e passa a vencido a partir de 18:01:00.
+ *
+ * @param {object} record Pedido com importedStamp e service.
+ * @param {object|null} profile Perfil ativo encontrado para o serviço.
+ * @returns {object|null} Prazo calculado e metadados usados pela Central SLA.
+ */
+function slaProfileDeadline(record,profile){
+  if(!record?.importedStamp)return null;
+  if(!profile){
+    const due=record.importedStamp+48*3600000;
+    return{due,dueDateKey:slaCentralDateKeyFromStamp(due),source:"Regra automática · 48 horas corridas após a importação",profileApplied:false,cutoff:"",deadlineTime:"",dispatchDay:""};
+  }
+
+  const imported=slaCentralZonedParts(record.importedStamp);
+  const cutoffText=profileCutoff(profile);
+  const [cutoffHour,cutoffMinute]=cutoffText.split(":").map(Number);
+  const deadlineTime=profileDeadlineTime(profile);
+  const [deadlineHour,deadlineMinute]=deadlineTime.split(":").map(Number);
+  const afterCutoff=imported.hour*60+imported.minute>cutoffHour*60+cutoffMinute;
+  const dispatchDay=profileDispatchDay(profile);
+  const baseOffset=dispatchDay==="next_day"?1:0;
+  const totalOffset=baseOffset+(afterCutoff?1:0);
+  const importDateKey=slaCentralDateKeyFromStamp(record.importedStamp);
+  const dueDateKey=slaCentralOffsetDateKey(importDateKey,totalOffset);
+  const [year,month,day]=dueDateKey.split("-").map(Number);
+  const due=slaCentralTimestamp(year,month,day,deadlineHour,deadlineMinute,59);
+  const dayLabel=totalOffset===0?"mesmo dia":totalOffset===1?"dia seguinte":"D+"+totalOffset;
+
+  return{due,dueDateKey,source:"Perfil "+profile.name+" · importar até "+cutoffText+" · expedir até "+deadlineTime+" no "+dayLabel,profileApplied:true,cutoff:cutoffText,deadlineTime,dispatchDay,afterCutoff,totalOffset};
+}
+
+/* ===================== LEITURA E NORMALIZAÇÃO DO CSV ===================== */
+
+/**
+ * Percorre o CSV sem criar uma matriz completa em memória. Isso mantém arquivos
+ * grandes utilizáveis e respeita campos entre aspas, separadores e quebras de linha.
+ */
 function forEachCsvRow(text, callback) {
   let separator=",",probeQuoted=false,commas=0,semicolons=0;
   for(let probe=0;probe<Math.min(text.length,65536);probe++){const char=text[probe];if(char==='"'){if(probeQuoted&&text[probe+1]==='"'){probe++;continue}probeQuoted=!probeQuoted}else if(!probeQuoted&&(char==='\n'||char==='\r')){if(commas||semicolons)break}else if(!probeQuoted&&char===',')commas++;else if(!probeQuoted&&char===';')semicolons++}
@@ -110,6 +222,63 @@ function operationalSector(status) {
   return "Expedição";
 }
 
+/* Regras de classificação exclusivas da Central SLA (Série 17). */
+const SLA_CENTRAL_TIME_ZONE="America/Sao_Paulo";
+// Alterar estes grupos muda em qual tabela cada status será contabilizado.
+const SLA_CENTRAL_STATUS_GROUPS=Object.freeze({
+  billing:Object.freeze(["importado","ag formacao de romaneio","aguardando separacao","separacao iniciada","separacao concluida","conferencia iniciada"]),
+  shipping:Object.freeze(["coleta iniciada","faturado","conferencia concluida","enviado para faturamento"])
+});
+
+// Corrige textos UTF-8 interpretados incorretamente antes de normalizar acentos.
+function repairCommonMojibake(value){
+  let text=String(value==null?"":value);
+  const replacements=[["ÃƒÂ","Ã"],["Ã¡","á"],["Ã¢","â"],["Ã£","ã"],["Ã¤","ä"],["Ã©","é"],["Ãª","ê"],["Ã­","í"],["Ã³","ó"],["Ã´","ô"],["Ãµ","õ"],["Ã¶","ö"],["Ãº","ú"],["Ã¼","ü"],["Ã§","ç"],["Ã","Á"],["Ã‚","Â"],["Ãƒ","Ã"],["Ã‰","É"],["ÃŠ","Ê"],["Ã","Í"],["Ã“","Ó"],["Ã”","Ô"],["Ã•","Õ"],["Ãš","Ú"],["Ã‡","Ç"],["Â "," "],["Â",""]];
+  replacements.forEach(pair=>{text=text.split(pair[0]).join(pair[1])});
+  return text;
+}
+
+function normalizeSlaCentralValue(value){
+  return repairCommonMojibake(value).replace(/^\ufeff/,"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+}
+
+function slaCentralAreaForStatus(value){
+  const normalized=normalizeSlaCentralValue(value);
+  if(SLA_CENTRAL_STATUS_GROUPS.billing.includes(normalized))return"billing";
+  if(SLA_CENTRAL_STATUS_GROUPS.shipping.includes(normalized))return"shipping";
+  return"";
+}
+
+function slaCentralZonedParts(stamp){
+  const values={};
+  new Intl.DateTimeFormat("en-CA",{timeZone:SLA_CENTRAL_TIME_ZONE,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(new Date(stamp)).forEach(part=>{if(part.type!=="literal")values[part.type]=Number(part.value)});
+  return{year:values.year,month:values.month,day:values.day,hour:values.hour,minute:values.minute,second:values.second};
+}
+
+function slaCentralTimestamp(year,month,day,hour,minute,second){
+  const target=Date.UTC(year,month-1,day,hour,minute,second),valid=new Date(Date.UTC(year,month-1,day));
+  if(valid.getUTCFullYear()!==year||valid.getUTCMonth()!==month-1||valid.getUTCDate()!==day)return NaN;
+  let stamp=target;
+  for(let index=0;index<3;index++){const parts=slaCentralZonedParts(stamp),represented=Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute,parts.second);stamp+=target-represented}
+  const checked=slaCentralZonedParts(stamp);
+  return checked.year===year&&checked.month===month&&checked.day===day&&checked.hour===hour&&checked.minute===minute?stamp:NaN;
+}
+
+function parseSlaCentralImportedAt(value){
+  const match=String(value||"").trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if(!match)return null;
+  const day=Number(match[1]),month=Number(match[2]),year=Number(match[3]),hour=Number(match[4]),minute=Number(match[5]),second=Number(match[6]||0);
+  if(hour>23||minute>59||second>59)return null;
+  const stamp=slaCentralTimestamp(year,month,day,hour,minute,second);
+  if(!Number.isFinite(stamp))return null;
+  return{stamp,dateKey:year+"-"+String(month).padStart(2,"0")+"-"+String(day).padStart(2,"0"),dateLabel:String(day).padStart(2,"0")+"/"+String(month).padStart(2,"0")+"/"+year,hour};
+}
+
+/**
+ * Fonte única das métricas exibidas no site. Ao adicionar uma coluna do CSV,
+ * registre seu índice aqui e inclua o valor apenas nas estruturas consumidoras.
+ * A Central SLA deduplica por Nota Fiscal; quando não existe NF, usa o Pedido.
+ */
 function calculateMetrics(csvText, fileName) {
   const metrics = createEmptyMetrics();
   const billingStatuses = new Set(["ENVIADO PARA FATURAMENTO", "FATURADO", "COLETA INICIADA"]);
@@ -128,6 +297,7 @@ function calculateMetrics(csvText, fileName) {
   const productivityMap = new Map();
   const triagedCarriers = new Map();
   const processedByDate = new Map();
+  const slaCentralSeen = new Set();
   let indexes = null;
   const now = new Date();
   const dateKey = (date) => String(date.getDate()).padStart(2, "0") + "/" + String(date.getMonth() + 1).padStart(2, "0") + "/" + date.getFullYear();
@@ -153,6 +323,8 @@ function calculateMetrics(csvText, fileName) {
         skuQty: column("Qtde. de Produto"), separatedAt: column("Separado em"), billedAt: column("Faturado em"), conferenceAt: column("Conferido em"), conferenceStarted: column("Conferência Iniciada"),
         serviceCode: column("Código do Serviço"), weighingUser: column("Usuário da Pesagem"), shipment: column("Título Romaneio"), orderClassification: column("Classificação Tipo Pedido")
       };
+      const slaCentralRequired=[["Pedido de Venda",indexes.order],["Nota Fiscal",indexes.invoice],["Série",indexes.series],["Status da Nota Fiscal",indexes.status],["Importado em",indexes.imported],["Serviço da Transportadora",indexes.service]];
+      metrics.slaCentralDiagnostics.missingColumns=slaCentralRequired.filter(item=>item[1]<0).map(item=>item[0]);
       const required = [["Pedido de Venda",indexes.order],["Série",indexes.series],["Status da Nota Fiscal",indexes.status],["Processado",indexes.processed],["Processado em",indexes.processedAt],["Qtde. de Volumes",indexes.volumes],["Qtde. Total de Produto",indexes.products],["Carga",indexes.load],["Transportadora",indexes.carrier]];
       const missing=required.filter(item=>item[1]<0).map(item=>item[0]);
       if(missing.length)throw new Error("Colunas obrigatórias ausentes: "+missing.join(", ")+".");
@@ -182,17 +354,45 @@ function calculateMetrics(csvText, fileName) {
     const isProcessed = (values[indexes.processed] || "").trim() === "1";
     const cancelledAt = indexes.cancelledAt >= 0 ? (values[indexes.cancelledAt] || "").trim() : "";
     const isCancelled = Boolean(cancelledAt) || status === "CANCELADO";
+    if(!isCancelled&&!metrics.slaCentralDiagnostics.missingColumns.length){
+      const normalizedSeries=normalizeSlaCentralValue(values[indexes.series]),seriesNumber=Number(normalizedSeries.replace(",","."));
+      const serviceRaw=repairCommonMojibake(values[indexes.service]).replace(/\s+/g," ").trim();
+      if((normalizedSeries==="17"||seriesNumber===17)&&serviceRaw){
+        const statusRaw=repairCommonMojibake(values[indexes.status]).replace(/\s+/g," ").trim(),area=slaCentralAreaForStatus(statusRaw);
+        if(!area){
+          const key=normalizeSlaCentralValue(statusRaw)||"nao informado",unknown=metrics.slaCentralDiagnostics.unknownStatuses[key]||{label:statusRaw||"Não informado",count:0};
+          unknown.count++;metrics.slaCentralDiagnostics.unknownStatuses[key]=unknown;
+        }else{
+          const importedRaw=String(values[indexes.imported]||"").trim(),imported=parseSlaCentralImportedAt(importedRaw);
+          if(!imported)metrics.slaCentralDiagnostics.invalidDates++;
+          else{
+            const invoice=String(values[indexes.invoice]||"").trim(),fallback=!invoice,identifier=invoice||order,uniqueKey=(fallback?"pedido:":"nf:")+normalizeSlaCentralValue(identifier);
+            if(slaCentralSeen.has(uniqueKey))metrics.slaCentralDiagnostics.duplicateRows++;
+            else{
+              slaCentralSeen.add(uniqueKey);
+              metrics.slaCentralRecords.push({
+                id:uniqueKey,identifier,identifierFallback:fallback,invoice,order,area,status:statusRaw,statusNormalized:normalizeSlaCentralValue(statusRaw),
+                service:serviceRaw,serviceNormalized:normalizeSlaCentralValue(serviceRaw),series:String(values[indexes.series]||"").trim(),importedRaw,importedStamp:imported.stamp,importDateKey:imported.dateKey,importDateLabel:imported.dateLabel,importHour:imported.hour,
+                carrier:carrier||"Transportadora não informada",load:load||"Sem carga",wave:indexes.wave>=0?(values[indexes.wave]||"").trim():"",waveId:indexes.waveId>=0?(values[indexes.waveId]||"").trim():"",
+                volumes,products,responsible:indexes.weighingUser>=0?(values[indexes.weighingUser]||"").trim():""
+              });
+            }
+          }
+        }
+      }
+    }
     if (!isCancelled) {
-      const ioImportedRaw = (indexes.imported >= 0 ? values[indexes.imported] : "") || (indexes.registered >= 0 ? values[indexes.registered] : "");
-      const ioImportedAt = parseBrazilianDateTime(ioImportedRaw);
-      const ioSeries = series === "17" ? "b2c" : (["", "11", "14"].includes(series) ? "b2b" : null);
-      if (ioSeries) metrics.ioOrders.push({
-        order, segment:ioSeries, series:series || "Vazia", wave:indexes.wave >= 0 ? (values[indexes.wave] || "").trim() : "",
+      const gembaImportedRaw = (indexes.imported >= 0 ? values[indexes.imported] : "") || (indexes.registered >= 0 ? values[indexes.registered] : "");
+      const gembaImportedAt = parseBrazilianDateTime(gembaImportedRaw);
+      const gembaSegment = series === "17" ? "b2c" : (["", "11", "14"].includes(series) ? "b2b" : null);
+      metrics.gembaOrders.push({
+        order, segment:gembaSegment||"other", series:series || "Vazia", wave:indexes.wave >= 0 ? (values[indexes.wave] || "").trim() : "",
         waveId:indexes.waveId >= 0 ? (values[indexes.waveId] || "").trim() : "", status:(values[indexes.status] || "").trim(),
         products, skus:indexes.skuQty >= 0 ? Number(String(values[indexes.skuQty] || "0").replace(",",".")) || 0 : 0,
         separatedAt:indexes.separatedAt >= 0 ? (values[indexes.separatedAt] || "").trim() : "", billedAt:indexes.billedAt >= 0 ? (values[indexes.billedAt] || "").trim() : "", weighedAt,
         conferenceStarted:indexes.conferenceStarted >= 0 ? (values[indexes.conferenceStarted] || "").trim() === "1" : false,
-        processed:isProcessed, importedStamp:ioImportedAt ? ioImportedAt.getTime() : 0, carrier, load
+        processed:isProcessed, importedStamp:gembaImportedAt ? gembaImportedAt.getTime() : 0, carrier, load,
+        orderClassification:indexes.orderClassification>=0?(values[indexes.orderClassification]||"").trim():""
       });
     }
     if (!isCancelled && !seen.sla.has(order)) {
@@ -366,8 +566,10 @@ function calculateMetrics(csvText, fileName) {
   return metrics;
 }
 
+// Tenta UTF-8 primeiro e recua para Windows-1252 apenas quando encontra caracteres inválidos.
 function decodeCsvBuffer(buffer){if(typeof buffer==="string")return buffer;const bytes=new Uint8Array(buffer),utf8=new TextDecoder("utf-8").decode(bytes);if(utf8.includes("\uFFFD"))try{return new TextDecoder("windows-1252").decode(bytes)}catch(error){}return utf8}
 
+// Processa bases grandes em Web Worker; o fallback síncrono mantém compatibilidade com navegadores restritos.
 function calculateMetricsAsync(csvBuffer, fileName) {
   if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") {
     return Promise.resolve().then(() => calculateMetrics(decodeCsvBuffer(csvBuffer), fileName));
@@ -381,6 +583,14 @@ function calculateMetricsAsync(csvBuffer, fileName) {
     decodeCsvBuffer.toString(),
     parseBrazilianDateTime.toString(),
     operationalSector.toString(),
+    'const SLA_CENTRAL_TIME_ZONE = "America/Sao_Paulo";',
+    'const SLA_CENTRAL_STATUS_GROUPS = ' + JSON.stringify(SLA_CENTRAL_STATUS_GROUPS) + ';',
+    repairCommonMojibake.toString(),
+    normalizeSlaCentralValue.toString(),
+    slaCentralAreaForStatus.toString(),
+    slaCentralZonedParts.toString(),
+    slaCentralTimestamp.toString(),
+    parseSlaCentralImportedAt.toString(),
     calculateMetrics.toString(),
     'self.onmessage = function(event) { try { const csvText=decodeCsvBuffer(event.data.csvBuffer); self.postMessage({ ok:true, metrics:calculateMetrics(csvText,event.data.fileName) }); } catch (error) { self.postMessage({ ok:false, message:error && error.message ? error.message : String(error) }); } };'
   ].join("\n");
@@ -399,6 +609,9 @@ function calculateMetricsAsync(csvBuffer, fileName) {
   });
 }
 
+/* ===================== COMPONENTES E RENDERIZAÇÃO OPERACIONAL ===================== */
+
+// Todo texto originado do CSV deve passar por escapeHtml() antes de entrar em innerHTML.
 function summaryHtml(data) {
   return [
     ["Pedidos de venda", data.orders], ["Qtde. total de produto", data.products], ["Qtde. de volumes", data.volumes]
@@ -628,69 +841,90 @@ function productivityHtml(productivity) {
   return '<article class="card productivity-today"><div class="productivity-head"><div><small>Produtividade do dia</small><h2>Produtos pesados por turno</h2></div><div class="productivity-date">' + today.date + '</div></div><div class="productivity-segments">' + segment('B2C', today.b2c, 'Série 17') + segment('B2B', today.b2b, 'Séries vazia, 11 e 14') + '</div></article><div class="history-grid">' + history + '</div><article class="card productivity-chart-card"><div class="card-head"><div><h2>Evolução da produção diária</h2><p>Total de produtos por dia · cada linha representa um segmento e turno</p></div></div>' + productivityWaveHtml(productivity.days) + '</article>';
 }
 
+/* ===================== GEMBA ===================== */
+
 const slaUi = { status: "", war: false, drawerRecords: [], drawerTitle: "", drawerPage:0, drawerPageSize:100 };
-const ioDefaults = { metaB2c:0,metaB2b:0,rateSepB2c:60,rateFatB2c:100,rateSepB2b:90,rateFatB2b:180,teamSepB2c:0,teamFatB2c:0,teamSepB2b:0,teamFatB2b:0 };
-let ioConfig = loadIoConfig();
+const GEMBA_FLOW_CATEGORIES=Object.freeze([
+  {id:"b2c",label:"B2C",classifications:Object.freeze(["VENDA OMN CHANNEL","ALOM-SPASA-VENDA FUNCION.","SPASA-REM AMC"])},
+  {id:"b2bFranchise",label:"B2B - FRANQ.",classifications:Object.freeze(["ALHV-SPASA-VENDA FRANQUIA","ALHV-SPASA-VD FRANQUEADOS","ALHV-SPASA-VENDA PROD/MAT"])},
+  {id:"sample",label:"AMOSTRA",classifications:Object.freeze(["ALHV-SPASA- AMOSTRA"])},
+  {id:"storeTransfer",label:"TRANSF. LOJA",classifications:Object.freeze(["ALHV-SPASA-TRANSF. LOJAS"])},
+  {id:"promo",label:"PROMO",classifications:Object.freeze(["ALHV-SPASA- ENV.MAT.PROMO"])},
+  {id:"consumer",label:"CONSUMIDOR",classifications:Object.freeze(["ALHV-SPASA-VD. CONSUMIDOR"])},
+  {id:"apollo",label:"APOLLO",classifications:Object.freeze(["ALHV-YPEM-CUST"])},
+  {id:"distributionCenterTransfer",label:"TRANSF. CD",classifications:Object.freeze(["ALTC-SPASA-TRANSF. CD"])},
+  {id:"ecommerce",label:"E-COMMERCE",classifications:Object.freeze(["ALHV-SPASA-VENDA ECOMMERC"])},
+  {id:"exportation",label:"EXPORTAÇÃO",classifications:Object.freeze(["ALHV-YEXR"])}
+]);
+const GEMBA_FLOW_STATUS_GROUPS=Object.freeze({
+  general:Object.freeze(["SEPARAÇÃO CONCLUÍDA","IMPORTADO","SEPARAÇÃO INICIADA","AG. SEPARAÇÃO","AG. FORMAÇÃO DE ROMANEIO/ONDA","CONFERÊNCIA INICIADA"]),
+  imported:Object.freeze(["IMPORTADO","AG. FORMAÇÃO DE ROMANEIO/ONDA"]),
+  inFlow:Object.freeze(["SEPARAÇÃO CONCLUÍDA","SEPARAÇÃO INICIADA","CONFERÊNCIA INICIADA"]),
+  waiting:Object.freeze(["AG. SEPARAÇÃO"])
+});
+const GEMBA_ABS_TYPES=Object.freeze(["Falta injustificada","Atestado","Declaração","Ausente"]);
+const gembaDefaults=Object.freeze({metaB2c:0,metaB2b:0});
+let gembaConfig=loadGembaConfig();
+let gembaAbs=loadGembaAbs();
 
-function loadIoConfig(){try{return {...ioDefaults,...JSON.parse(localStorage.getItem("luft-io-config")||"{}")}}catch(error){return {...ioDefaults}}}
-function saveIoConfig(){localStorage.setItem("luft-io-config",JSON.stringify(ioConfig));pushCloudSetting("io_config",ioConfig)}
-function currentShiftTime(){const now=new Date(),end=new Date(now);let label;if(now.getHours()<15){end.setHours(15,0,0,0);label="1º turno"}else{end.setDate(end.getDate()+1);end.setHours(0,0,0,0);label="2º turno"}return{label,hours:Math.max(0,(end-now)/3600000),end}}
-function sameLocalDay(value,date){const parsed=parseBrazilianDateTime(value);return parsed&&parsed.getDate()===date.getDate()&&parsed.getMonth()===date.getMonth()&&parsed.getFullYear()===date.getFullYear()}
-function clockDuration(hours){const total=Math.max(0,Math.round(hours*60));return Math.floor(total/60)+"h"+String(total%60).padStart(2,"0")}
+function nonNegativeNumber(value){const number=Number(value);return Number.isFinite(number)?Math.max(0,number):0}
+function sanitizeGembaConfig(value){return{metaB2c:nonNegativeNumber(value?.metaB2c),metaB2b:nonNegativeNumber(value?.metaB2b)}}
+function loadGembaConfig(){try{const saved=JSON.parse(localStorage.getItem("luft-gemba-config")||"null");return saved?sanitizeGembaConfig(saved):{...gembaDefaults}}catch(error){return{...gembaDefaults}}}
+function saveGembaConfig(){gembaConfig=sanitizeGembaConfig(gembaConfig);localStorage.setItem("luft-gemba-config",JSON.stringify(gembaConfig));pushCloudSetting("gemba_config",gembaConfig)}
+function loadGembaAbs(){try{const data=JSON.parse(localStorage.getItem("gemba_abs")||"[]");return Array.isArray(data)?data.filter(item=>item&&item.id&&String(item.nome||"").trim()&&GEMBA_ABS_TYPES.includes(item.tipo)).map(item=>({id:String(item.id),nome:String(item.nome).trim(),tipo:item.tipo})):[]}catch(error){return[]}}
+function saveGembaAbs(){localStorage.setItem("gemba_abs",JSON.stringify(gembaAbs));renderGembaAbs();renderGembaSummary()}
+function resetGembaAbs(){gembaAbs=[];localStorage.removeItem("gemba_abs");renderGembaAbs();renderGembaSummary()}
 
-function ioWaveRanking(orders,segment){
-  const map=new Map();
-  orders.filter(item=>item.segment===segment&&!item.processed&&(item.wave||item.waveId)).forEach(item=>{const key=item.wave||item.waveId;if(!map.has(key))map.set(key,{wave:key,segment,orders:0,pieces:0,skus:0,conference:false,oldest:item.importedStamp||Infinity,orderIds:new Set()});const wave=map.get(key);if(!wave.orderIds.has(item.order)){wave.orderIds.add(item.order);wave.orders++;wave.pieces+=item.products;wave.skus+=item.skus}wave.conference=wave.conference||item.conferenceStarted||normalizeHeader(item.status).includes("conferencia iniciada");wave.oldest=Math.min(wave.oldest,item.importedStamp||Infinity)});
-  const waves=Array.from(map.values()).map(item=>({...item,ratio:item.pieces/Math.max(1,segment==="b2b"?item.skus:item.orders)}));
-  const maxOrders=Math.max(1,...waves.map(item=>item.orders)),maxPieces=Math.max(1,...waves.map(item=>item.pieces)),maxSkus=Math.max(1,...waves.map(item=>item.skus)),maxRatio=Math.max(1,...waves.map(item=>item.ratio));
-  waves.forEach(item=>{item.score=segment==="b2c"?(item.orders/maxOrders*.55+(1-Math.min(1,item.ratio/Math.max(1,maxRatio)))*.25+item.pieces/maxPieces*.2):(1-item.skus/maxSkus)*.35+item.pieces/maxPieces*.3+item.ratio/maxRatio*.35;if(item.conference)item.score+=.12;item.opportunityScore=Math.min(100,Math.round(item.score*100))});
-  return waves.sort((a,b)=>b.score-a.score||b.pieces-a.pieces);
+// Produção considera a data de pesagem; registros de outras datas não entram na meta do dia.
+function calculateGembaProduction(metrics,referenceDate=new Date()){
+  const today=String(referenceDate.getDate()).padStart(2,"0")+"/"+String(referenceDate.getMonth()+1).padStart(2,"0")+"/"+referenceDate.getFullYear();
+  return(metrics.gembaOrders||[]).reduce((result,item)=>{if(!String(item.weighedAt||"").startsWith(today))return result;if(item.segment==="b2c")result.b2c+=nonNegativeNumber(item.products);else if(item.segment==="b2b")result.b2b+=nonNegativeNumber(item.products);return result},{b2c:0,b2b:0});
 }
 
-function calculateIo(metrics){
-  const now=new Date(),shift=currentShiftTime(),orders=metrics.ioOrders;
-  const todayText=String(now.getDate()).padStart(2,"0")+"/"+String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear();
-  let sepB2c=0,fatB2c=0,sepB2b=0,fatB2b=0;
-  orders.forEach(item=>{const separated=String(item.separatedAt||"").startsWith(todayText),weighed=String(item.weighedAt||"").startsWith(todayText);if(item.segment==="b2c"){if(separated)sepB2c+=item.products;if(weighed)fatB2c+=item.products}else if(item.segment==="b2b"){if(separated)sepB2b+=item.products;if(weighed)fatB2b+=item.products}});
-  const remainingB2c=Math.max(0,ioConfig.metaB2c-fatB2c),remainingB2b=Math.max(0,ioConfig.metaB2b-fatB2b);
-  const capacities={sepB2c:ioConfig.teamSepB2c*ioConfig.rateSepB2c*shift.hours,fatB2c:ioConfig.teamFatB2c*ioConfig.rateFatB2c*shift.hours,sepB2b:ioConfig.teamSepB2b*ioConfig.rateSepB2b*shift.hours,fatB2b:ioConfig.teamFatB2b*ioConfig.rateFatB2b*shift.hours};
-  capacities.b2c=Math.min(capacities.sepB2c,capacities.fatB2c);capacities.b2b=Math.min(capacities.sepB2b,capacities.fatB2b);capacities.total=capacities.b2c+capacities.b2b;
-  const projectedDeficitB2c=Math.max(0,remainingB2c-capacities.b2c),projectedDeficitB2b=Math.max(0,remainingB2b-capacities.b2b);
-  const transferToB2b=projectedDeficitB2c>0&&projectedDeficitB2b===0?projectedDeficitB2c:0,transferToB2c=projectedDeficitB2b>0&&projectedDeficitB2c===0?projectedDeficitB2b:0;
-  const adjustedRemainingB2c=remainingB2c+transferToB2c,adjustedRemainingB2b=remainingB2b+transferToB2b;
-  const slaNow=enrichedSlaRecords(),urgentIds=new Set(slaNow.filter(item=>["overdue","critical"].includes(item.slaStatus)).map(item=>item.order));
-  const applySlaPriority=list=>list.map(wave=>{wave.slaRisk=Array.from(wave.orderIds).some(order=>urgentIds.has(order));if(wave.slaRisk)wave.score+=2;return wave}).sort((a,b)=>b.score-a.score||a.oldest-b.oldest);
-  const b2cWaves=applySlaPriority(ioWaveRanking(orders,"b2c")),b2bWaves=applySlaPriority(ioWaveRanking(orders,"b2b")),waves=[...b2cWaves,...b2bWaves].sort((a,b)=>b.score-a.score||a.oldest-b.oldest);
-  const available={b2c:b2cWaves.reduce((s,w)=>s+w.pieces,0),b2b:b2bWaves.reduce((s,w)=>s+w.pieces,0)};
-  const urgentSla=slaNow.filter(item=>["overdue","critical"].includes(item.slaStatus));
-  const required=adjustedRemainingB2c+adjustedRemainingB2b,capacityCoverage=required?Math.min(1,capacities.total/required):1,waveCoverage=required?Math.min(1,(available.b2c+available.b2b)/required):1,teamReady=(ioConfig.teamSepB2c+ioConfig.teamFatB2c+ioConfig.teamSepB2b+ioConfig.teamFatB2b)>0;
-  const confidence=ioConfig.metaB2c+ioConfig.metaB2b===0?0:Math.round(Math.max(2,Math.min(99,(capacityCoverage*.58+waveCoverage*.32+(teamReady?.1:0)-Math.min(.18,urgentSla.length*.004))*100)));
-  return{shift,sepB2c,fatB2c,sepB2b,fatB2b,remainingB2c,remainingB2b,adjustedRemainingB2c,adjustedRemainingB2b,projectedDeficitB2c,projectedDeficitB2b,transferToB2c,transferToB2b,capacities,b2cWaves,b2bWaves,waves,available,urgentSla,confidence};
+// Compensação transfere somente o excedente real entre B2C e B2B, sem criar produção artificial.
+function calculateForecastCompensation(metaB2c,producedB2c,metaB2b,producedB2b){
+  const originalB2c=nonNegativeNumber(metaB2c),originalB2b=nonNegativeNumber(metaB2b),actualB2c=nonNegativeNumber(producedB2c),actualB2b=nonNegativeNumber(producedB2b);
+  const deficitB2c=Math.max(0,originalB2c-actualB2c),deficitB2b=Math.max(0,originalB2b-actualB2b);
+  const compensationB2c=deficitB2b,compensationB2b=deficitB2c*2;
+  const adjustedB2c=originalB2c+compensationB2c,adjustedB2b=originalB2b+compensationB2b;
+  return{b2c:{meta:originalB2c,produced:actualB2c,deficit:deficitB2c,compensation:compensationB2c,adjusted:adjustedB2c,remaining:Math.max(0,adjustedB2c-actualB2c),above:Math.max(0,actualB2c-adjustedB2c)},b2b:{meta:originalB2b,produced:actualB2b,deficit:deficitB2b,compensation:compensationB2b,adjusted:adjustedB2b,remaining:Math.max(0,adjustedB2b-actualB2b),above:Math.max(0,actualB2b-adjustedB2b)}};
 }
 
-function ioGoalCard(label,produced,goal,adjusted,transfer){const percent=goal?Math.min(100,produced/goal*100):0;return '<article class="card goal-card"><div class="goal-head"><strong>'+label+'</strong><span>'+decimalFmt(percent)+'% concluído</span></div><div class="goal-progress"><i style="width:'+percent+'%"></i></div><div class="goal-values"><div><small>Produzido</small><strong>'+fmt(produced)+'</strong></div><div><small>Meta</small><strong>'+fmt(goal)+'</strong></div><div><small>Falta</small><strong>'+fmt(Math.max(0,goal-produced))+'</strong></div><div><small>Necessário/h</small><strong>'+decimalFmt(adjusted/Math.max(.01,currentShiftTime().hours))+'</strong></div></div>'+(transfer?'<div class="goal-compensation">↗ Compensação prevista: +'+fmt(transfer)+' peças transferidas para este segmento</div>':'')+'</article>'}
-function capacityRow(label,necessary,capacity){const balance=capacity-necessary;return '<div class="capacity-row"><div><strong>'+label+'</strong><small>Até o fim do '+currentShiftTime().label.toLowerCase()+'</small></div><span>Necessário <b>'+fmt(Math.ceil(necessary))+'</b></span><span>Capacidade <b>'+fmt(Math.floor(capacity))+'</b></span><span class="capacity-result '+(balance>=0?'ok':'bad')+'">'+(balance>=0?'✓ Sobra ':'⚠ Déficit ')+fmt(Math.abs(Math.round(balance)))+'</span></div>'}
-function waveItem(wave,index,plan,rate){const detail=wave.segment==="b2b"?fmt(wave.pieces)+' peças · '+fmt(wave.skus)+' SKU · '+decimalFmt(wave.ratio)+' peças/SKU':fmt(wave.orders)+' pedidos · '+fmt(wave.pieces)+' peças · '+decimalFmt(wave.ratio)+' prod./pedido';const time=rate?wave.pieces/rate:0;return '<div class="wave-item"><span class="wave-rank">'+(plan?(index+1)+'º':index===0?'🥇':index===1?'🥈':index===2?'🥉':(index+1)+'º')+'</span><span><strong>Onda '+escapeHtml(wave.wave)+' · '+wave.segment.toUpperCase()+(wave.slaRisk?' · 🔴 SLA crítico':wave.conference?' · Conferência iniciada':'')+'</strong><small>'+detail+(plan?' · estimado '+clockDuration(time):'')+'</small></span><span class="wave-score"><strong>'+wave.opportunityScore+'</strong><small>índice</small></span></div>'}
-
-function renderIo(metrics){
-  const io=calculateIo(metrics);$("#nav-io-confidence").textContent=io.confidence+"%";
-  if(!metrics.fileName){$("#io-content").innerHTML='<article class="card io-empty">Importe o CSV para a I.O. analisar metas, capacidade e ondas.</article>';return}
-  const configured=ioConfig.metaB2c+ioConfig.metaB2b>0,canReach=io.capacities.b2c>=io.adjustedRemainingB2c&&io.capacities.b2b>=io.adjustedRemainingB2b;
-  const top=io.waves[0],oldest=io.waves.slice().sort((a,b)=>a.oldest-b.oldest)[0],fifoBreak=top&&oldest&&top.wave!==oldest.wave;
-  const oldestUrgent=oldest&&enrichedSlaRecords().some(record=>record.wave===oldest.wave&&["overdue","critical"].includes(record.slaStatus));
-  const messages=[];
-  if(!configured)messages.push({type:"urgent",title:"Configure as metas diárias",text:"As produtividades padrão já estão preenchidas. Informe metas e equipe para ativar a projeção completa."});
-  else messages.push({type:canReach?"opportunity":"urgent",title:canReach?"A meta é alcançável com a capacidade atual":"A capacidade atual não cobre a meta",text:"Restam "+clockDuration(io.shift.hours)+" de operação. Capacidade estimada: "+fmt(Math.floor(io.capacities.total))+" peças; necessidade ajustada: "+fmt(Math.ceil(io.adjustedRemainingB2c+io.adjustedRemainingB2b))+" peças."});
-  const b2cPressure=io.adjustedRemainingB2c-io.capacities.b2c,b2bPressure=io.adjustedRemainingB2b-io.capacities.b2b;
-  if(configured)messages.push({type:Math.max(b2cPressure,b2bPressure)>0?"urgent":"opportunity",title:(b2cPressure>b2bPressure?"B2C":"B2B")+" precisa de atenção primeiro",text:"Separação e faturamento foram comparados individualmente. O menor deles define a capacidade real do segmento."});
-  if(io.projectedDeficitB2c>0&&io.projectedDeficitB2b>0)messages.push({type:"urgent",title:"Compensação cruzada indisponível no cenário atual",text:"B2C e B2B apresentam déficit projetado. Transferir a diferença entre eles apenas duplicaria a necessidade; é necessário elevar capacidade ou remanejar equipe."});
-  if(top)messages.push({type:top.slaRisk?"urgent":"opportunity",title:"Inicie a Onda "+top.wave,text:(top.slaRisk?"Prioridade elevada por risco de SLA. ":"É a melhor oportunidade de produtividade. ")+"Segmento "+top.segment.toUpperCase()+", com "+fmt(top.pieces)+" peças."});
-  if(io.urgentSla.length)messages.push({type:"urgent",title:fmt(io.urgentSla.length)+" pedidos com risco crítico de SLA",text:"Valide esses pedidos na Central de SLA antes de alterar a sequência de ondas."});
-  if(fifoBreak)messages.push({type:oldestUrgent?"urgent":"opportunity",title:oldestUrgent?"Não é recomendável quebrar o FIFO agora":"FIFO pode ser quebrado com risco controlado",text:oldestUrgent?"A onda mais antiga contém pedido crítico ou vencido. Priorize o SLA antes do ganho de produtividade.":"A melhor oportunidade difere da onda mais antiga, mas não foi encontrado risco crítico de SLA nessa onda."});
-  const plan=[],needed={b2c:io.adjustedRemainingB2c,b2b:io.adjustedRemainingB2b},rates={b2c:Math.min(ioConfig.teamSepB2c*ioConfig.rateSepB2c,ioConfig.teamFatB2c*ioConfig.rateFatB2c),b2b:Math.min(ioConfig.teamSepB2b*ioConfig.rateSepB2b,ioConfig.teamFatB2b*ioConfig.rateFatB2b)};io.waves.forEach(wave=>{if(needed[wave.segment]>0&&plan.length<8){plan.push(wave);needed[wave.segment]-=wave.pieces}});
-  const planHours=plan.reduce((sum,wave)=>sum+(rates[wave.segment]?wave.pieces/rates[wave.segment]:0),0),finish=new Date(Date.now()+planHours*3600000);
-  $("#io-content").innerHTML='<div class="io-hero"><article class="card io-command"><small>Leitura executiva · '+io.shift.label+'</small><h2>'+(configured?(canReach?'Operação com capacidade para atingir a meta':'Intervenção necessária para recuperar a meta'):'Aguardando metas e equipe')+'</h2><p>'+(top?'Melhor ação agora: iniciar a Onda '+escapeHtml(top.wave)+' ('+top.segment.toUpperCase()+'). ':'')+(io.urgentSla.length?'Existem '+fmt(io.urgentSla.length)+' pedidos em risco crítico de SLA. ':'Sem risco crítico de SLA identificado. ')+'Tempo restante: '+clockDuration(io.shift.hours)+'.</p></article><article class="card io-confidence"><div class="confidence-ring" style="--value:'+io.confidence+'"><strong>'+io.confidence+'%</strong></div><div><h3>Índice de confiança</h3><p>Combina equipe, tempo, capacidade, ondas disponíveis, meta restante e risco de SLA.</p></div></article></div><div class="io-goals">'+ioGoalCard('Meta B2C',io.fatB2c,ioConfig.metaB2c,io.adjustedRemainingB2c,io.transferToB2c)+ioGoalCard('Meta B2B',io.fatB2b,ioConfig.metaB2b,io.adjustedRemainingB2b,io.transferToB2b)+'</div><div class="io-grid"><article class="card"><div class="card-head"><div><h2>Capacidade operacional</h2><p>Equipe × produtividade/hora × horas restantes</p></div></div><div class="io-card-body">'+capacityRow('Separação B2C',io.adjustedRemainingB2c,io.capacities.sepB2c)+capacityRow('Faturamento B2C',io.adjustedRemainingB2c,io.capacities.fatB2c)+capacityRow('Separação B2B',io.adjustedRemainingB2b,io.capacities.sepB2b)+capacityRow('Faturamento B2B',io.adjustedRemainingB2b,io.capacities.fatB2b)+capacityRow('Capacidade total',io.adjustedRemainingB2c+io.adjustedRemainingB2b,io.capacities.total)+'</div></article><article class="card"><div class="card-head"><div><h2>Assistente operacional</h2><p>Recomendações com base no cenário atual</p></div></div><div class="io-card-body">'+messages.map(message=>'<div class="assistant-message '+message.type+'"><strong>'+escapeHtml(message.title)+'</strong><p>'+escapeHtml(message.text)+'</p></div>').join('')+'</div></article></div><div class="io-ranking-plan"><article class="card"><div class="card-head"><div><h2>Ranking inteligente de ondas</h2><p>B2C: pedidos e produtos/pedido · B2B: SKU, peças e peças/SKU</p></div></div><div class="wave-list">'+(io.waves.length?io.waves.slice(0,8).map((wave,index)=>waveItem(wave,index,false,0)).join(''):'<div class="io-empty">Nenhuma onda pendente disponível.</div>')+'</div></article><article class="card"><div class="card-head"><div><h2>Plano de execução</h2><p>Sequência sugerida até cobrir a necessidade restante</p></div></div><div class="wave-list">'+(plan.length?plan.map((wave,index)=>waveItem(wave,index,true,rates[wave.segment])).join('<div class="plan-arrow">↓</div>'):'<div class="io-empty">Configure metas/equipe ou importe ondas pendentes.</div>')+'</div>'+(plan.length?'<div class="goal-compensation" style="margin:14px 17px">Resultado estimado: '+(planHours?finish.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'informe a equipe para calcular o horário')+'</div>':'')+'</article></div>';
+function calculateGembaFlow(metrics){
+  const orders=metrics.gembaOrders||[],sum=list=>list.reduce((total,item)=>total+nonNegativeNumber(item.products),0);
+  const normalizedGroups=Object.fromEntries(Object.entries(GEMBA_FLOW_STATUS_GROUPS).map(([key,statuses])=>[key,statuses.map(normalizeSlaCentralValue)]));
+  const prepared=orders.map(item=>({...item,normalizedStatus:normalizeSlaCentralValue(item.status),normalizedClassification:normalizeSlaCentralValue(item.orderClassification)}));
+  const items=GEMBA_FLOW_CATEGORIES.map(category=>{
+    const classifications=category.classifications.map(normalizeSlaCentralValue),classified=prepared.filter(item=>classifications.includes(item.normalizedClassification));
+    const recordsFor=group=>classified.filter(item=>normalizedGroups[group].includes(item.normalizedStatus)),eligible=recordsFor("general");
+    return{id:category.id,label:category.label,orders:new Set(eligible.map(item=>item.order)).size,general:sum(eligible),imported:sum(recordsFor("imported")),inFlow:sum(recordsFor("inFlow")),waiting:sum(recordsFor("waiting")),visible:eligible.length>0};
+  }).filter(item=>item.visible);
+  return{items,classificationAvailable:orders.some(item=>String(item.orderClassification||"").trim())};
 }
+
+function calculateGembaMetrics(metrics){const production=calculateGembaProduction(metrics),forecast=calculateForecastCompensation(gembaConfig.metaB2c,production.b2c,gembaConfig.metaB2b,production.b2b);return{flow:calculateGembaFlow(metrics),production,forecast}}
+function gembaFlowValue(label,value){return '<div class="gemba-flow-value"><span>'+escapeHtml(label)+'</span><strong>'+fmt(value)+'</strong></div>'}
+function gembaFlowCard(item,index){const tones=["#2563eb","#8b5cf6","#f59e0b","#06b6d4","#ec4899","#14b8a6","#6366f1","#f97316","#22c55e","#64748b"],values=gembaFlowValue("Fluxo geral",item.general)+gembaFlowValue("Importado",item.imported)+gembaFlowValue("Em fluxo",item.inFlow)+gembaFlowValue("Aguardando separação",item.waiting);return '<article class="gemba-flow-item" style="--tone:'+tones[index%tones.length]+'"><h3>'+escapeHtml(item.label)+'</h3><div>'+values+'</div></article>'}
+function renderGembaFlow(flow,hasFile){if(!hasFile)return '<div class="empty-state">Importe o CSV para calcular o fluxo operacional.</div>';if(!flow.classificationAvailable)return '<div class="empty-state">A coluna Classificação Tipo Pedido não está disponível ou não possui valores.</div>';if(!flow.items.length)return '<div class="empty-state">Nenhum pedido encontrado nas classificações e status monitorados.</div>';return '<div class="gemba-flow-grid">'+flow.items.map(gembaFlowCard).join("")+'</div><p class="gemba-rule-note">Somente classificações e status configurados são exibidos. Cards sem pedidos elegíveis permanecem ocultos.</p>'}
+function gembaForecastCard(label,data,tone){const percent=data.adjusted?Math.min(100,data.produced/data.adjusted*100):100,status=data.remaining?'<strong class="gemba-remaining">Faltam produzir '+fmt(data.remaining)+'</strong>':'<strong class="gemba-achieved">Meta atingida'+(data.above?' · +'+fmt(data.above)+' acima da necessidade':'')+'</strong>';return '<article class="gemba-forecast-item '+tone+'"><div class="gemba-forecast-title"><h3>'+label+'</h3><span>'+decimalFmt(percent)+'%</span></div><div class="gemba-progress"><i style="width:'+percent+'%"></i></div><div class="gemba-forecast-values"><span>Meta original <b>'+fmt(data.meta)+'</b></span><span>Produzido <b>'+fmt(data.produced)+'</b></span><span>Déficit original <b>'+fmt(data.deficit)+'</b></span><span>Compensação recebida <b>+'+fmt(data.compensation)+'</b></span><span>Necessidade ajustada <b>'+fmt(data.adjusted)+'</b></span></div>'+status+'</article>'}
+function updateGembaGoalAccess(){const editable=cloudState.isManager;["#gemba-meta-b2c","#gemba-meta-b2b","#gemba-save-goals"].forEach(selector=>{const element=$(selector);if(element)element.disabled=!editable});if($("#gemba-goals-access"))$("#gemba-goals-access").textContent=editable?"Metas sincronizadas com as configurações da gestão.":"Somente Gestor ou Administrador pode alterar as metas."}
+function renderGembaAbs(){if(!$("#gemba-abs-list"))return;$("#gemba-abs-count").textContent="ABS: "+fmt(gembaAbs.length);$("#gemba-abs-list").innerHTML=gembaAbs.length?gembaAbs.map(item=>'<div class="gemba-abs-row"><span><strong>'+escapeHtml(item.nome)+'</strong><small>'+escapeHtml(item.tipo)+'</small></span><span><button data-gemba-abs-action="edit" data-gemba-abs-id="'+escapeHtml(item.id)+'">Editar</button><button class="danger-mini" data-gemba-abs-action="delete" data-gemba-abs-id="'+escapeHtml(item.id)+'">Excluir</button></span></div>').join(""):'<div class="empty-state compact">Nenhum ABS registrado.</div>'}
+function generateGembaSummary(metrics=currentMetrics,referenceDate=new Date()){
+  const date=referenceDate,gemba=calculateGembaMetrics(metrics),lines=[greetingForTime(date)+"!","Segue informações do GEMBA",String(date.getDate()).padStart(2,"0")+"/"+String(date.getMonth()+1).padStart(2,"0")];
+  if(metrics.fileName){
+    gemba.flow.items.forEach(item=>lines.push("",item.label,"Fluxo geral: "+fmt(item.general),"Importado: "+fmt(item.imported),"Em fluxo: "+fmt(item.inFlow),"Aguardando separação: "+fmt(item.waiting)));
+    lines.push("","Faturado até o momento","B2B: "+fmt(gemba.production.b2b),"B2C: "+fmt(gemba.production.b2c));
+  }
+  lines.push("","ABS: "+fmt(gembaAbs.length));gembaAbs.forEach(item=>lines.push(item.nome+" — "+item.tipo));return lines.join("\n")
+}
+function renderGembaSummary(){if($("#gemba-summary-preview"))$("#gemba-summary-preview").textContent=generateGembaSummary()}
+function renderGemba(metrics){const gemba=calculateGembaMetrics(metrics),now=new Date();$("#gemba-updated").textContent=metrics.fileName?now.toLocaleDateString("pt-BR")+" · atualizado às "+metrics.importedAt:"Aguardando importação do CSV";$("#gemba-flow").innerHTML=renderGembaFlow(gemba.flow,Boolean(metrics.fileName));$("#gemba-meta-b2c").value=gembaConfig.metaB2c;$("#gemba-meta-b2b").value=gembaConfig.metaB2b;$("#gemba-forecast").innerHTML='<div class="gemba-forecast-grid">'+gembaForecastCard("B2C",gemba.forecast.b2c,"blue")+gembaForecastCard("B2B",gemba.forecast.b2b,"violet")+'</div>';updateGembaGoalAccess();renderGembaAbs();renderGembaSummary()}
+function openGembaAbs(item){$("#gemba-abs-id").value=item?.id||"";$("#gemba-abs-name").value=item?.nome||"";$("#gemba-abs-type").value=item?.tipo||"";$("#gemba-abs-title").textContent=item?"Editar ABS":"Adicionar ABS";$("#gemba-abs-error").textContent="";$("#gemba-abs-modal").classList.add("show");$("#gemba-abs-modal").setAttribute("aria-hidden","false");setTimeout(()=>$("#gemba-abs-name").focus(),0)}
+function closeGembaAbs(){$("#gemba-abs-modal").classList.remove("show");$("#gemba-abs-modal").setAttribute("aria-hidden","true");$("#gemba-abs-form").reset();$("#gemba-abs-id").value="";$("#gemba-abs-error").textContent=""}
+async function writeClipboardText(text){if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text);const area=document.createElement("textarea");area.value=text;area.style.position="fixed";area.style.opacity="0";document.body.append(area);try{area.select();if(!document.execCommand("copy"))throw new Error("Cópia não suportada")}finally{area.remove()}}
+async function copyGemba(){if(!currentMetrics.fileName)return showToast("Importe um CSV antes de copiar o GEMBA.",true);try{await writeClipboardText(generateGembaSummary());showToast("GEMBA copiado com sucesso.")}catch(error){showToast("Não foi possível copiar o GEMBA neste navegador.",true)}}
+/* ===================== CENTRAL SLA E DETALHAMENTOS ===================== */
+
 const slaStatusMeta = {
   overdue: { label: "SLA vencido", color: "#ef4444" }, critical: { label: "Em risco", color: "#f97316" },
   today: { label: "Vence hoje", color: "#eab308" }, safe: { label: "Dentro do SLA", color: "#22c55e" },
@@ -708,77 +942,11 @@ function enrichedSlaRecords() {
   const now=Date.now(),minute=Math.floor(now/60000);
   if(slaRuntimeCache.metrics===currentMetrics&&slaRuntimeCache.profiles===slaProfiles&&slaRuntimeCache.pickups===pickupSchedules&&slaRuntimeCache.minute===minute)return slaRuntimeCache.records;
   const records=currentMetrics.slaRecords.map(record => {
-    const profile=matchingSlaProfile(record),deadline=profile?effectiveSlaDeadline(record,profile):null,applicable=Boolean(profile&&deadline),alertMinutes=profile?profileAlertMinutes(profile):0;
-    return { ...record, profileId:profile?profile.id:null, profileName:profile?profile.name:"SLA não configurado", profileSummary:profile?profileRuleSummary(profile):"Nenhum perfil ativo corresponde à transportadora, série e status deste pedido.", alertMinutes, dueStamp:deadline?deadline.due:null, pickupStamp:deadline?deadline.pickup:null, deadlineSource:deadline?deadline.source:"Sem perfil aplicável ou campo de origem vazio", slaApplicable:applicable, slaStatus:applicable?slaState(deadline.due,now,alertMinutes):"notApplicable", remaining:applicable?deadline.due-now:null };
+    const profile=matchingSlaProfile(record),deadline=slaProfileDeadline(record,profile),applicable=Boolean(deadline&&Number.isFinite(deadline.due)),alertMinutes=0;
+    return { ...record, profileId:profile?profile.id:null, profileName:profile?profile.name:"Regra automática 48h", profileSummary:profile?profileRuleSummary(profile):"Prazo de 48 horas corridas após a importação.", alertMinutes, dueStamp:applicable?deadline.due:null, pickupStamp:null, deadlineSource:applicable?deadline.source:"Data/Hora Importação não informada", slaApplicable:applicable, slaStatus:applicable?slaState(deadline.due,now,alertMinutes):"notApplicable", remaining:applicable?deadline.due-now:null };
   });
   slaRuntimeCache={metrics:currentMetrics,profiles:slaProfiles,pickups:pickupSchedules,minute,records};
   return records;
-}
-
-function selectOptions(selector, records, field, emptyLabel) {
-  const element = $(selector), current = element.value;
-  const values = Array.from(new Set(records.map(record => record[field]).filter(Boolean))).sort((a,b) => String(a).localeCompare(String(b), "pt-BR", { numeric:true }));
-  element.innerHTML = '<option value="">' + emptyLabel + '</option>' + values.map(value => '<option value="' + escapeHtml(value) + '">' + escapeHtml(value) + '</option>').join("");
-  if (values.includes(current)) element.value = current;
-}
-
-function populateSlaFilters(records) {
-  selectOptions("#sla-carrier", records, "carrier", "Todas"); selectOptions("#sla-wave", records, "wave", "Todas");
-  selectOptions("#sla-load", records, "load", "Todas"); selectOptions("#sla-order-status", records, "status", "Todos");
-  selectOptions("#sla-service", records, "service", "Todos"); selectOptions("#sla-series", records, "series", "Todas");
-}
-
-function filteredSlaRecords(records) {
-  const query = normalizeHeader($("#sla-search").value), selectedStatus = slaUi.status || $("#sla-filter").value;
-  const exact = [["#sla-carrier","carrier"],["#sla-wave","wave"],["#sla-load","load"],["#sla-order-status","status"],["#sla-service","service"],["#sla-series","series"],["#sla-shift","shift"],["#sla-date","importDate"]];
-  return records.filter(record => {
-    if (!query && !record.slaApplicable) return false;
-    if (slaUi.war && !["overdue","critical"].includes(record.slaStatus)) return false;
-    if (selectedStatus && selectedStatus !== "all" && record.slaStatus !== selectedStatus) return false;
-    if (query && !normalizeHeader([record.invoice,record.order,record.wave,record.waveId,record.load,record.carrier].join(" ")).includes(query)) return false;
-    return exact.every(([selector,field]) => !$(selector).value || record[field] === $(selector).value);
-  });
-}
-
-function groupSlaRecords(records, field) {
-  const groups = new Map();
-  records.forEach(record => { const key = record[field] || "Não informado"; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(record); });
-  const risk = { overdue:0, critical:1, today:2, safe:3, notApplicable:4 };
-  return Array.from(groups, ([name,items]) => ({ name, items, minRisk: Math.min(...items.map(item => risk[item.slaStatus])), minDue: Math.min(...items.map(item => item.dueStamp)) }))
-    .sort((a,b) => a.minRisk - b.minRisk || a.minDue - b.minDue || b.items.length - a.items.length);
-}
-
-function slaCounts(records) {
-  const counts = { safe:0,today:0,critical:0,overdue:0,notApplicable:0 };
-  records.forEach(record => counts[record.slaStatus]++); return counts;
-}
-
-function slaGroupHtml(group, index) {
-  const counts = slaCounts(group.items), total = group.items.length;
-  const part = value => (value / total * 100).toFixed(2) + "%";
-  return '<button class="sla-group" data-sla-group-index="' + index + '"><div class="sla-group-head"><strong>' + escapeHtml(group.name) + '</strong><span>' + fmt(total) + ' pedidos · ' + fmt(group.items.reduce((sum,item)=>sum+item.volumes,0)) + ' volumes</span></div><div class="sla-group-stats"><span class="sla-chip red">🔴 ' + fmt(counts.overdue) + ' vencidos</span><span class="sla-chip orange">🟠 ' + fmt(counts.critical) + ' críticos</span><span class="sla-chip yellow">🟡 ' + fmt(counts.today) + ' hoje</span><span class="sla-chip green">🟢 ' + fmt(counts.safe) + ' dentro</span>'+(counts.notApplicable?'<span class="sla-chip gray">Sem SLA '+fmt(counts.notApplicable)+'</span>':'')+'</div><div class="sla-riskbar"><i style="width:' + part(counts.overdue) + ';background:#ef4444"></i><i style="width:' + part(counts.critical) + ';background:#f97316"></i><i style="width:' + part(counts.today) + ';background:#eab308"></i><i style="width:' + part(counts.safe) + ';background:#22c55e"></i><i style="width:' + part(counts.notApplicable) + ';background:#94a3b8"></i></div></button>';
-}
-
-function priorityGroups(records) {
-  const urgent = records.filter(record => ["overdue","critical","today"].includes(record.slaStatus));
-  const groups = new Map();
-  urgent.forEach(record => { const key = record.carrier + "||" + record.load; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(record); });
-  return Array.from(groups, ([key,items]) => ({ key, carrier:items[0].carrier, load:items[0].load, sector:items[0].sector, items, due:Math.min(...items.map(item=>item.dueStamp)) }))
-    .sort((a,b) => a.due - b.due || b.items.length - a.items.length).slice(0,7);
-}
-
-function renderSlaCentral(refreshFilters) {
-  const all = enrichedSlaRecords(), applicable = all.filter(record=>record.slaApplicable), counts = slaCounts(applicable);
-  $("#sla-total").textContent=fmt(applicable.length); $("#sla-safe").textContent=fmt(counts.safe); $("#sla-today").textContent=fmt(counts.today); $("#sla-critical").textContent=fmt(counts.critical); $("#sla-overdue").textContent=fmt(counts.overdue);
-  if (refreshFilters) populateSlaFilters(all);
-  document.querySelectorAll(".sla-kpi").forEach(card => card.classList.toggle("active", (card.dataset.slaStatus || "") === (slaUi.status || "all")));
-  const filtered = filteredSlaRecords(all), field=$("#sla-group").value, labels={carrier:"transportadora",wave:"onda",load:"carga",status:"status atual",importHour:"horário de importação"};
-  const groups=groupSlaRecords(filtered,field); slaUi.visibleGroups=groups;
-  $("#sla-group-title").textContent="Risco por " + labels[field]; $("#sla-result-count").textContent=fmt(filtered.length)+" pedidos exibidos em "+fmt(groups.length)+" grupos";
-  $("#sla-groups").innerHTML=groups.length?groups.map(slaGroupHtml).join(""):'<div class="sla-empty">Nenhum pedido corresponde aos filtros selecionados.</div>';
-  const priorities=priorityGroups(slaUi.war?filtered:applicable); slaUi.priorityGroups=priorities;
-  $("#sla-priorities").innerHTML=priorities.length?priorities.map((group,index)=>'<button class="priority-item" data-sla-priority-index="'+index+'"><span class="priority-rank">'+(index+1)+'º</span><span><strong>'+escapeHtml(carrierShort(group.carrier))+' · '+escapeHtml(group.load)+'</strong><small>'+fmt(group.items.length)+' pedidos · '+escapeHtml(group.sector)+'</small></span><span class="priority-time">'+escapeHtml(humanDuration(group.due-Date.now()))+'</span></button>').join(""):'<div class="sla-empty">Nenhuma prioridade imediata.</div>';
-  const next=applicable.filter(record=>record.remaining>=0).sort((a,b)=>a.dueStamp-b.dueStamp)[0]; $("#sla-countdown").textContent=next?humanDuration(next.remaining):"Sem prazo futuro";
 }
 
 function renderSlaDrawerPage(){const limit=(slaUi.drawerPage+1)*slaUi.drawerPageSize,visible=slaUi.drawerRecords.slice(0,limit);$("#sla-drawer-body").innerHTML=visible.map((record,index)=>{const meta=slaStatusMeta[record.slaStatus];return '<button class="drawer-order" data-sla-record-index="'+index+'"><span><strong>Pedido '+escapeHtml(record.order)+'</strong><small>NF '+escapeHtml(record.invoice||"—")+'</small></span><span><strong>'+escapeHtml(record.load)+'</strong><small>Onda '+escapeHtml(record.wave||record.waveId||"—")+'</small></span><span><strong>'+escapeHtml(carrierShort(record.carrier))+'</strong><small>'+escapeHtml(record.status)+'</small></span><strong style="color:'+meta.color+'">'+escapeHtml(record.slaApplicable?humanDuration(record.remaining):meta.label)+'</strong></button>'}).join("")+(visible.length<slaUi.drawerRecords.length?'<button class="btn secondary" id="sla-drawer-more">Mostrar mais '+fmt(Math.min(slaUi.drawerPageSize,slaUi.drawerRecords.length-visible.length))+' pedidos</button>':'')}
@@ -796,7 +964,174 @@ function showSlaRecord(index) {
   $("#sla-back-list").addEventListener("click",()=>openSlaDrawer(slaUi.drawerRecords,slaUi.drawerTitle));
 }
 
-function closeSlaDrawer(){$("#sla-drawer").classList.remove("show");$("#sla-drawer-backdrop").classList.remove("show")}
+function closeSlaDrawer(){$("#sla-drawer").classList.remove("show");$("#sla-drawer-backdrop").classList.remove("show");slaCentralUi.drawerOpen=false}
+
+// Estado efêmero da interface: expansões e filtros não são persistidos entre sessões.
+const slaCentralUi={
+  model:null,contexts:new Map(),contextSequence:0,importToken:"",
+  expanded:{billing:new Set(),shipping:new Set()},drawerOpen:false,drawerRecords:[],filteredDrawerRecords:[],drawerTitle:"",drawerLimit:200
+};
+
+function slaCentralDateKeyFromStamp(stamp){const parts=slaCentralZonedParts(stamp);return parts.year+"-"+String(parts.month).padStart(2,"0")+"-"+String(parts.day).padStart(2,"0")}
+function slaCentralOffsetDateKey(dateKey,offset){const parts=dateKey.split("-").map(Number),date=new Date(Date.UTC(parts[0],parts[1]-1,parts[2]+offset));return date.getUTCFullYear()+"-"+String(date.getUTCMonth()+1).padStart(2,"0")+"-"+String(date.getUTCDate()).padStart(2,"0")}
+function slaCentralDateLabel(dateKey){const parts=dateKey.split("-");return parts[2]+"/"+parts[1]+"/"+parts[0]}
+// Enriquece o registro sem mutar a linha original importada do CSV.
+function classifySlaCentralDelay(record,todayKey,referenceStamp){
+  const profile=matchingSlaProfile(record),deadline=slaProfileDeadline(record,profile),dueStamp=deadline?.due,delayed=Number.isFinite(dueStamp)&&referenceStamp>dueStamp,priorityToday=deadline?.dueDateKey===todayKey;
+  const delayReason=profile
+    ?(deadline.afterCutoff?"Importado após "+deadline.cutoff+"; prazo avançado em um dia adicional e expedição até "+deadline.deadlineTime+".":"Importado dentro do corte; expedição até "+deadline.deadlineTime+" no "+(deadline.dispatchDay==="next_day"?"dia seguinte":"mesmo dia")+".")
+    :"Serviço sem perfil: prazo automático de 48 horas corridas após a importação.";
+  return{profileId:profile?.id||null,profileName:profile?.name||"Regra automática 48h",profileApplied:Boolean(profile),cutoff:deadline?.cutoff||"",deadlineTime:deadline?.deadlineTime||"",dispatchDay:deadline?.dispatchDay||"",dueStamp,dueDateKey:deadline?.dueDateKey||"",deadlineSource:deadline?.source||"",priorityToday,automatic48h:!profile,delayed,delayKind:delayed?(profile?"profile-overdue":"automatic-overdue"):(priorityToday?"due-today":"within-deadline"),delayReason};
+}
+
+/**
+ * Monta o modelo compartilhado por KPIs, matrizes, drawer e exportação.
+ * Manter todos esses consumidores na mesma fonte evita divergência de contagens.
+ */
+function buildSlaCentralModel(metrics,referenceStamp=Date.now()){
+  const todayKey=slaCentralDateKeyFromStamp(referenceStamp),d1Key=slaCentralOffsetDateKey(todayKey,-1);
+  const records=(metrics.slaCentralRecords||[]).map(record=>Object.assign({},record,{carrierNormalized:normalizeSlaCentralValue(record.carrier)},classifySlaCentralDelay(record,todayKey,referenceStamp)));
+  const serviceMap=new Map();records.forEach(record=>{if(!serviceMap.has(record.serviceNormalized))serviceMap.set(record.serviceNormalized,record.service)});
+  const services=Array.from(serviceMap,([normalized,label])=>({normalized,label})).sort((a,b)=>a.normalized.localeCompare(b.normalized,"pt-BR",{numeric:true}));
+  const carrierMap=new Map();records.forEach(record=>{if(!carrierMap.has(record.carrierNormalized))carrierMap.set(record.carrierNormalized,record.carrier)});
+  const carriers=Array.from(carrierMap,([normalized,label])=>({normalized,label})).sort((a,b)=>a.normalized.localeCompare(b.normalized,"pt-BR",{numeric:true}));
+  const areas={};
+  ["billing","shipping"].forEach(area=>{
+    const areaRecords=records.filter(record=>record.area===area),dates=new Map();
+    areaRecords.forEach(record=>{
+      if(!dates.has(record.importDateKey))dates.set(record.importDateKey,{key:record.importDateKey,label:record.importDateLabel,records:[],hours:new Map()});
+      const group=dates.get(record.importDateKey);group.records.push(record);
+      if(!group.hours.has(record.importHour))group.hours.set(record.importHour,[]);
+      group.hours.get(record.importHour).push(record);
+    });
+    areas[area]={records:areaRecords,dates:Array.from(dates.values()).sort((a,b)=>a.key.localeCompare(b.key))};
+  });
+  const delayed=records.filter(record=>record.delayed).sort((a,b)=>a.dueStamp-b.dueStamp),priorityToday=records.filter(record=>record.priorityToday&&!record.delayed).sort((a,b)=>a.dueStamp-b.dueStamp),automatic=records.filter(record=>record.automatic48h),urgent=[...records].sort((a,b)=>a.dueStamp-b.dueStamp)[0]||null;
+  return{todayKey,d1Key,referenceStamp,records,services,carriers,areas,delayed,priorityToday,automatic,urgent};
+}
+
+function registerSlaCentralContext(records,title){
+  const id="sla_ctx_"+(++slaCentralUi.contextSequence);
+  slaCentralUi.contexts.set(id,{records:[...records],title});
+  return id;
+}
+
+function slaCentralCountMarkup(records,title){
+  if(!records.length)return"";
+  const delayed=records.filter(record=>record.delayed).length,dueToday=records.filter(record=>record.priorityToday&&!record.delayed).length,id=registerSlaCentralContext(records,title),signal=delayed?'<small>'+fmt(delayed)+' vencido'+(delayed===1?'':'s')+'</small>':dueToday?'<small>'+fmt(dueToday)+' para hoje</small>':'';
+  return '<button class="sla-count-button" data-sla-context="'+id+'"><strong>'+fmt(records.length)+'</strong>'+signal+'</button>';
+}
+
+function slaCentralRecordsFor(records,serviceNormalized){return serviceNormalized?records.filter(record=>record.serviceNormalized===serviceNormalized):records}
+function slaCentralRecordsForCarrier(records,carrierNormalized){return carrierNormalized?records.filter(record=>record.carrierNormalized===carrierNormalized):records}
+
+function slaCentralTableHtml(area,model){
+  const areaData=model.areas[area],areaLabel=area==="billing"?"Faturamento":"Expedição";
+  if(!areaData.records.length)return'<div class="sla-central-empty">Nenhum pedido encontrado em '+areaLabel.toLowerCase()+' com Série 17 e serviço preenchido.</div>';
+  const carriers=model.carriers.filter(carrier=>areaData.records.some(record=>record.carrierNormalized===carrier.normalized));
+  const header=carriers.map(carrier=>'<th>'+escapeHtml(carrier.label)+'</th>').join("");
+  const rows=[];
+  areaData.dates.forEach(date=>{
+    const isToday=date.key===model.todayKey,isD1=date.key===model.d1Key,expanded=slaCentralUi.expanded[area].has(date.key),suffix=isToday?" — Hoje":isD1?" — D-1":"";
+    const delayed=date.records.filter(record=>record.delayed).length,dueToday=date.records.some(record=>record.priorityToday&&!record.delayed),rowClass=delayed?"sla-row-overdue":dueToday?"sla-row-alert":"";
+    const cells=carriers.map(carrier=>{const records=slaCentralRecordsForCarrier(date.records,carrier.normalized);return'<td>'+slaCentralCountMarkup(records,areaLabel+" · "+date.label+" · "+carrier.label)+'</td>'}).join("");
+    const toggle='<button class="sla-date-toggle" data-sla-toggle-area="'+area+'" data-sla-toggle-date="'+date.key+'" aria-expanded="'+expanded+'" aria-label="'+(expanded?"Recolher":"Expandir")+' horários de '+escapeHtml(date.label)+'" title="'+(expanded?"Recolher":"Expandir")+' horários">'+(expanded?"−":"+")+'</button>';
+    const scopeClass=isToday?"sla-scope-today":isD1?"sla-scope-d1":"sla-scope-older";
+    rows.push('<tr class="sla-date-row '+scopeClass+' '+rowClass+'"><th>'+toggle+'<span>'+escapeHtml(date.label+suffix)+'</span></th>'+cells+'<td class="sla-total-cell">'+slaCentralCountMarkup(date.records,areaLabel+" · total de "+date.label)+'</td></tr>');
+    if(expanded)Array.from(date.hours.entries()).sort((a,b)=>a[0]-b[0]).forEach(([hour,hourRecords])=>{
+      const hourDelayed=hourRecords.filter(record=>record.delayed).length,hourDueToday=hourRecords.some(record=>record.priorityToday&&!record.delayed),hourClass=hourDelayed?"sla-row-overdue":hourDueToday?"sla-row-alert":"";
+      const hourCells=carriers.map(carrier=>{const records=slaCentralRecordsForCarrier(hourRecords,carrier.normalized);return'<td>'+slaCentralCountMarkup(records,areaLabel+" · "+date.label+" · "+String(hour).padStart(2,"0")+"h · "+carrier.label)+'</td>'}).join("");
+      rows.push('<tr class="sla-hour-row '+scopeClass+' '+hourClass+'"><th><span>↳ '+String(hour).padStart(2,"0")+'h</span></th>'+hourCells+'<td class="sla-total-cell">'+slaCentralCountMarkup(hourRecords,areaLabel+" · "+date.label+" · "+String(hour).padStart(2,"0")+"h")+'</td></tr>');
+    });
+  });
+  const carrierTotals=carriers.map(carrier=>{const records=slaCentralRecordsForCarrier(areaData.records,carrier.normalized);return'<td>'+slaCentralCountMarkup(records,areaLabel+" · total de "+carrier.label)+'</td>'}).join("");
+  const footer='<tr class="sla-grand-total"><th>Total por transportadora</th>'+carrierTotals+'<td>'+slaCentralCountMarkup(areaData.records,areaLabel+" · total geral")+'</td></tr>';
+  return'<div class="sla-matrix-scroll"><table class="sla-central-matrix"><thead><tr><th>Dia/horário</th>'+header+'<th>Total</th></tr></thead><tbody>'+rows.join("")+'</tbody><tfoot>'+footer+'</tfoot></table></div>';
+}
+
+function renderSlaCentralDiagnostics(metrics){
+  const diagnostics=metrics.slaCentralDiagnostics||{},messages=[];
+  if((diagnostics.missingColumns||[]).length)messages.push('<div class="sla-diagnostic error"><strong>Colunas obrigatórias não encontradas</strong><span>'+escapeHtml(diagnostics.missingColumns.join(", "))+'</span></div>');
+  if(diagnostics.invalidDates)messages.push('<div class="sla-diagnostic warning"><strong>Datas não interpretadas</strong><span>'+fmt(diagnostics.invalidDates)+' registro(s) ignorado(s) porque “Importado em” não contém data e hora válidas.</span></div>');
+  const unknown=Object.values(diagnostics.unknownStatuses||{});
+  if(unknown.length)messages.push('<div class="sla-diagnostic info"><strong>Status não classificados</strong><span>'+unknown.sort((a,b)=>b.count-a.count).map(item=>escapeHtml(item.label)+" ("+fmt(item.count)+")").join(" · ")+'</span></div>');
+  $("#sla-central-diagnostics").innerHTML=messages.join("");
+}
+
+function renderSlaNormalBreakdown(model){
+  if(!model.records.length){$("#sla-normal-breakdown").innerHTML='<div class="sla-central-empty compact">Importe o CSV para visualizar as prioridades.</div>';return}
+  const statusGroups=[{label:"SLA vencido",records:model.delayed},{label:"Prioridade de hoje",records:model.priorityToday},{label:"Regra automática 48h",records:model.automatic}];
+  const byStatus=statusGroups.map(group=>{const id=registerSlaCentralContext(group.records,group.label);return'<button data-sla-context="'+id+'" '+(group.records.length?'':'disabled')+'><span>'+group.label+'</span><strong>'+fmt(group.records.length)+'</strong></button>'}).join("");
+  const urgent=model.records.filter(record=>record.delayed||record.priorityToday),byService=model.services.map(service=>{const records=urgent.filter(record=>record.serviceNormalized===service.normalized);if(!records.length)return"";const id=registerSlaCentralContext(records,"Prioridade SLA · "+service.label);return'<button data-sla-context="'+id+'"><span>'+escapeHtml(service.label)+'</span><strong>'+fmt(records.length)+'</strong></button>'}).join("")||'<span class="sla-breakdown-empty">Nenhum serviço vencido ou com prioridade para hoje.</span>';
+  $("#sla-normal-breakdown").innerHTML='<div class="sla-breakdown-section"><small>Por condição</small><div>'+byStatus+'</div></div><div class="sla-breakdown-section"><small>Serviços urgentes</small><div>'+byService+'</div></div>';
+}
+
+function setSlaCentralCardContext(cardName,records,title){
+  const card=document.querySelector('[data-sla-card="'+cardName+'"]');if(!card)return;
+  card.dataset.slaContext=records.length?registerSlaCentralContext(records,title):"";
+  card.disabled=!records.length;
+}
+
+function renderSlaCentral(){
+  const metrics=currentMetrics,model=buildSlaCentralModel(metrics),token=metrics.fileName+"|"+metrics.importedAt+"|"+model.todayKey;
+  if(token!==slaCentralUi.importToken){slaCentralUi.importToken=token;slaCentralUi.expanded={billing:new Set([model.d1Key,model.todayKey]),shipping:new Set([model.d1Key,model.todayKey])}}
+  slaCentralUi.model=model;slaCentralUi.contexts.clear();slaCentralUi.contextSequence=0;
+  $("#sla-central-updated").textContent=metrics.fileName?"CSV "+metrics.fileName+" · atualizado às "+metrics.importedAt+" · fuso "+SLA_CENTRAL_TIME_ZONE:"Importe o CSV para calcular os pedidos pendentes";
+  renderSlaCentralDiagnostics(metrics);
+  $("#sla-central-billing").textContent=fmt(model.areas.billing.records.length);$("#sla-central-shipping").textContent=fmt(model.areas.shipping.records.length);$("#sla-central-delayed").textContent=fmt(model.delayed.length);$("#sla-central-previous").textContent=fmt(model.priorityToday.length);$("#sla-central-today-before").textContent=fmt(model.automatic.length);
+  $("#sla-central-oldest").textContent=model.urgent?new Date(model.urgent.dueStamp).toLocaleString("pt-BR",{timeZone:SLA_CENTRAL_TIME_ZONE,day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";$("#sla-central-oldest-wait").textContent=model.urgent?(model.urgent.delayed?slaCentralPendingDuration(model.referenceStamp-model.urgent.dueStamp)+" em atraso":humanDuration(model.urgent.dueStamp-model.referenceStamp)):"Nenhum pedido pendente";
+  setSlaCentralCardContext("billing",model.areas.billing.records,"Pendentes de faturamento");setSlaCentralCardContext("shipping",model.areas.shipping.records,"Pendentes de expedição");setSlaCentralCardContext("delayed",model.delayed,"Pedidos com SLA vencido");setSlaCentralCardContext("previous",model.priorityToday,"Prioridade de hoje");setSlaCentralCardContext("today-before",model.automatic,"Serviços com regra automática de 48h");setSlaCentralCardContext("oldest",model.urgent?[model.urgent]:[],"Pedido com prazo mais urgente");
+  renderSlaNormalBreakdown(model);
+  const missing=(metrics.slaCentralDiagnostics?.missingColumns||[]).length;
+  const state=!metrics.fileName?'<div class="sla-central-empty">Nenhum CSV importado.</div>':missing?'<div class="sla-central-empty error">Não foi possível montar a tabela. Verifique as colunas obrigatórias informadas acima.</div>':null;
+  $("#sla-billing-table").innerHTML=state||slaCentralTableHtml("billing",model);$("#sla-shipping-table").innerHTML=state||slaCentralTableHtml("shipping",model);
+}
+
+function slaCentralPendingDuration(milliseconds){
+  const totalMinutes=Math.max(0,Math.floor(milliseconds/60000)),days=Math.floor(totalMinutes/1440),hours=Math.floor(totalMinutes%1440/60),minutes=totalMinutes%60;
+  return[days?days+"d":"",hours?hours+"h":"",(!days||!hours)&&minutes?minutes+"min":""].filter(Boolean).join(" ")||"0min";
+}
+
+function slaCentralFilterOptions(records,field,label){
+  const values=Array.from(new Map(records.map(record=>[String(record[field]),record[field]])).values()).filter(value=>value!==""&&value!=null).sort((a,b)=>String(a).localeCompare(String(b),"pt-BR",{numeric:true}));
+  return'<option value="">'+label+'</option>'+values.map(value=>'<option value="'+escapeHtml(value)+'">'+escapeHtml(field==="importHour"?String(value).padStart(2,"0")+"h":value)+'</option>').join("");
+}
+
+function openSlaCentralDrawer(records,title){
+  if(!records.length)return;
+  slaCentralUi.drawerOpen=true;slaCentralUi.drawerRecords=[...records].sort((a,b)=>a.importedStamp-b.importedStamp);slaCentralUi.drawerTitle=title;slaCentralUi.drawerLimit=200;
+  $("#sla-drawer-kicker").textContent="DETALHAMENTO · EXPEDIÇÃO PEDIDOS";$("#sla-drawer-title").textContent=title;$("#sla-drawer-subtitle").textContent=fmt(records.length)+" pedido(s) único(s)";
+  $("#sla-drawer-body").innerHTML='<div class="sla-detail-toolbar"><div class="sla-field span-2"><label>Pesquisa</label><input id="sla-detail-search" placeholder="Nota Fiscal ou Pedido de Venda"></div><div class="sla-field"><label>Data</label><input type="date" id="sla-detail-date"></div><div class="sla-field"><label>Horário</label><select id="sla-detail-hour">'+slaCentralFilterOptions(records,"importHour","Todos")+'</select></div><div class="sla-field"><label>Status</label><select id="sla-detail-status">'+slaCentralFilterOptions(records,"status","Todos")+'</select></div><div class="sla-field"><label>Serviço</label><select id="sla-detail-service">'+slaCentralFilterOptions(records,"service","Todos")+'</select></div><div class="sla-field"><label>Prazo</label><select id="sla-detail-delay"><option value="">Todos</option><option value="delayed">Atrasados</option><option value="on-time">Dentro do prazo</option></select></div><button class="btn secondary" id="sla-detail-export">Exportar CSV</button></div><div id="sla-detail-results"></div>';
+  renderSlaCentralDrawerResults();$("#sla-drawer").classList.add("show");$("#sla-drawer-backdrop").classList.add("show");
+}
+
+function filteredSlaCentralDrawerRecords(){
+  const query=normalizeSlaCentralValue($("#sla-detail-search")?.value||""),date=$("#sla-detail-date")?.value||"",hour=$("#sla-detail-hour")?.value||"",status=$("#sla-detail-status")?.value||"",service=$("#sla-detail-service")?.value||"",delay=$("#sla-detail-delay")?.value||"";
+  return slaCentralUi.drawerRecords.filter(record=>{
+    if(query&&!normalizeSlaCentralValue(record.invoice+" "+record.order).includes(query))return false;
+    if(date&&record.importDateKey!==date)return false;if(hour!==""&&String(record.importHour)!==hour)return false;if(status&&record.status!==status)return false;if(service&&record.service!==service)return false;
+    if(delay==="delayed"&&!record.delayed)return false;if(delay==="on-time"&&record.delayed)return false;return true;
+  });
+}
+
+function slaCentralDetailRecordHtml(record){
+  const condition=record.delayed?"SLA vencido":record.priorityToday?"Prioridade de hoje":"Dentro do prazo",deadline=Number.isFinite(record.dueStamp)?new Date(record.dueStamp).toLocaleString("pt-BR",{timeZone:SLA_CENTRAL_TIME_ZONE}):"—";
+  const fields=[["Nota Fiscal",record.invoice||"—"],["Pedido de Venda",record.order],["Importado em",record.importedRaw],["Tempo pendente",slaCentralPendingDuration(Date.now()-record.importedStamp)],["Status atual",record.status],["Etapa",record.area==="billing"?"Faturamento":"Expedição"],["Serviço",record.service],["Transportadora",record.carrier],["Perfil aplicado",record.profileName],["Limite de importação",record.cutoff||"Não se aplica"],["Limite de expedição",record.deadlineTime||"48h após importação"],["Prazo base",record.dispatchDay==="next_day"?"Dia seguinte":record.dispatchDay==="same_day"?"Mesmo dia":"Regra automática"],["Prazo calculado",deadline],["Carga",record.load],["Onda",record.wave||record.waveId||"—"],["Volumes",fmt(record.volumes)],["Peças",fmt(record.products)],["Usuário responsável",record.responsible||"Não informado"],["Condição",condition],["Motivo",record.delayReason]];
+  return'<article class="sla-detail-record '+(record.delayed?"delayed":"")+'"><div class="sla-detail-record-head"><span><strong>'+escapeHtml(record.invoice?"NF "+record.invoice:"Pedido "+record.order)+'</strong>'+(record.identifierFallback?'<small>Pedido de Venda usado como identificador</small>':'')+'</span><b class="'+(record.delayed?"bad":"good")+'">'+condition+'</b></div><div class="sla-detail-grid">'+fields.map(field=>'<div><small>'+escapeHtml(field[0])+'</small><strong>'+escapeHtml(field[1])+'</strong></div>').join("")+'</div></article>';
+}
+
+function renderSlaCentralDrawerResults(){
+  if(!slaCentralUi.drawerOpen||!$("#sla-detail-results"))return;
+  const records=filteredSlaCentralDrawerRecords();slaCentralUi.filteredDrawerRecords=records;const visible=records.slice(0,slaCentralUi.drawerLimit);
+  $("#sla-drawer-subtitle").textContent=fmt(records.length)+" de "+fmt(slaCentralUi.drawerRecords.length)+" pedido(s)";
+  $("#sla-detail-results").innerHTML=visible.length?visible.map(slaCentralDetailRecordHtml).join("")+(visible.length<records.length?'<button class="btn secondary sla-detail-more" id="sla-detail-more">Mostrar mais '+fmt(Math.min(200,records.length-visible.length))+'</button>':''):'<div class="sla-central-empty">Nenhum pedido corresponde aos filtros do detalhamento.</div>';
+}
+
+function exportSlaCentralDetailCsv(){
+  const rows=[["NOTA FISCAL","PEDIDO DE VENDA","IDENTIFICADOR ALTERNATIVO","IMPORTADO EM","TEMPO PENDENTE","STATUS","ETAPA","SERVIÇO DA TRANSPORTADORA","TRANSPORTADORA","PERFIL SLA","LIMITE IMPORTAÇÃO","LIMITE EXPEDIÇÃO","PRAZO BASE","PRAZO CALCULADO","CARGA","ONDA","VOLUMES","PEÇAS","USUÁRIO RESPONSÁVEL","SLA VENCIDO","MOTIVO"]];
+  slaCentralUi.filteredDrawerRecords.forEach(record=>rows.push([record.invoice,record.order,record.identifierFallback?"SIM":"NÃO",record.importedRaw,slaCentralPendingDuration(Date.now()-record.importedStamp),record.status,record.area==="billing"?"Faturamento":"Expedição",record.service,record.carrier,record.profileName,record.cutoff||"NÃO SE APLICA",record.deadlineTime||"48H",record.dispatchDay==="next_day"?"DIA SEGUINTE":record.dispatchDay==="same_day"?"MESMO DIA":"AUTOMÁTICO",new Date(record.dueStamp).toLocaleString("pt-BR",{timeZone:SLA_CENTRAL_TIME_ZONE}),record.load,record.wave||record.waveId,record.volumes,record.products,record.responsible,record.delayed?"SIM":"NÃO",record.delayReason]));
+  const content=rows.map(row=>row.map(csvCell).join(";")).join("\n"),blob=new Blob(["\ufeff"+content],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="expedicao-pedidos-detalhamento-"+new Date().toISOString().slice(0,10)+".csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast("Detalhamento de Expedição Pedidos exportado em CSV.");
+}
 
 const conferenceUi={details:[],title:""};
 function conferenceBucketByKey(key,segment){const data=segment==="b2c"?currentMetrics.b2cHourly:currentMetrics.b2bHourly;return data.find(item=>item.label+"||"+item.descriptor===key)}
@@ -817,31 +1152,54 @@ function exportConferenceImage(){
   canvas.toBlob(blob=>{if(!blob)return showToast("Não foi possível gerar a imagem.",true);const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="pendentes-conferencia-"+new Date().toISOString().slice(0,10)+".png";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast("Lista de conferência exportada como imagem.")},"image/png")
 }
 
-const profileTypeLabels={hours:"SLA por horas",same_day:"Mesmo dia",next_business_day:"Próximo dia útil",fixed_date:"Data fixa",custom:"Regra personalizada"},profileSourceLabels={imported:"Data/Hora Importação",billed:"Data/Hora Faturamento",conference:"Data/Hora Conferência",other:"Data de cadastro"};
-function profileRuleSummary(profile){const rule=profile.rule||{},calendar=profile.calendar||{},parts=[];parts.push(profileTypeLabels[rule.type]||"Regra não definida");if(rule.type==="hours")parts.push((Number(rule.hours)||0)+" horas a partir de "+(profileSourceLabels[rule.source]||"origem"));if(rule.type==="same_day")parts.push("Origem até "+rule.cutoff+" · expedir até "+rule.deadlineTime+" do mesmo dia útil");if(rule.type==="next_business_day")parts.push("Origem até "+rule.cutoff+" · expedir no próximo dia útil às "+rule.deadlineTime);if(rule.type==="fixed_date")parts.push("Expedir em "+(rule.fixedDate||"data não definida")+" às "+rule.fixedTime);if(rule.type==="custom")parts.push((Number(rule.offsetDays)||0)+" dia(s) e "+(Number(rule.offsetHours)||0)+" hora(s) adicionais");const alerts=((profile.alerts||{}).thresholdMinutes||[]);if(alerts.length)parts.push("Alertas: "+alerts.join(", ")+" min antes");if((calendar.holidayDates||[]).length)parts.push((calendar.holidayDates||[]).length+" feriado(s) cadastrado(s)");if((profile.exceptions||[]).length)parts.push("Exceções: "+profile.exceptions.join("; "));return parts.join(". ")+"."}
-function checkedValues(container){return Array.from(document.querySelectorAll(container+' input[type="checkbox"]:checked')).map(input=>input.value)}
+/* ===================== CADASTRO DE PERFIS SLA ===================== */
+
+// SCHEMA V5: services, cutoff, deadlineTime e dispatchDay são os campos operacionais da regra.
+function profileRuleSummary(profile){
+  const cutoff=profileCutoff(profile);
+  const deadline=profileDeadlineTime(profile);
+  const services=profileServiceValues(profile);
+  const nextDay=profileDispatchDay(profile)==="next_day";
+  const serviceLabel=services.length?fmt(services.length)+" serviço(s)":"Nenhum serviço selecionado";
+  const withinCutoff=nextDay?"do dia seguinte":"do mesmo dia";
+  const afterCutoff=nextDay?"em D+2":"do dia seguinte";
+  return serviceLabel+" · importado até "+cutoff+": expedir até "+deadline+" "+withinCutoff+"; após "+cutoff+": expedir até "+deadline+" "+afterCutoff+". Dias corridos.";
+}
 function selectedValues(selector){return Array.from($(selector).selectedOptions).map(option=>option.value)}
-function profileFromForm(){return{id:$("#sla-profile-id").value||("sla_"+Date.now()+"_"+Math.random().toString(36).slice(2,7)),schemaVersion:3,name:$("#sla-profile-name").value.trim(),description:$("#sla-profile-description").value.trim(),active:$("#sla-profile-active").value==="1",priority:Math.max(1,Number($("#sla-profile-priority").value)||100),notes:$("#sla-profile-notes").value.trim(),match:{mode:$("#sla-profile-match-mode").value,allCarriers:$("#sla-profile-all-transporters").checked,carriers:selectedValues("#sla-profile-transporters"),allServices:$("#sla-profile-all-carriers").checked,services:selectedValues("#sla-profile-carriers"),series:checkedValues("#sla-profile-series"),statuses:checkedValues("#sla-profile-statuses"),clients:[],ufs:[],priorities:[]},rule:{type:$("#sla-profile-type").value,source:$("#sla-profile-source").value,hours:Number($("#sla-profile-hours").value)||0,cutoff:$("#sla-profile-cutoff").value,deadlineTime:$("#sla-profile-deadline-time").value,fixedDate:$("#sla-profile-fixed-date").value,fixedTime:$("#sla-profile-fixed-time").value,offsetDays:Number($("#sla-profile-offset-days").value)||0,offsetHours:Number($("#sla-profile-offset-hours").value)||0},calendar:{businessDays:checkedValues("#sla-profile-business-days").map(Number),holidayDates:String($("#sla-profile-holidays").value||"").split(/[,;]+/).map(value=>value.trim()).filter(value=>/^\d{2}\/\d{2}\/\d{4}$/.test(value))},alerts:{thresholdMinutes:Array.from(new Set(String($("#sla-profile-alerts").value||"").split(/[,;\s]+/).map(Number).filter(value=>value>0))).sort((a,b)=>b-a)},exceptions:String($("#sla-profile-exceptions").value||"").split(/\n+/).map(value=>value.trim()).filter(Boolean),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}}
-function renderProfileChecks(){const series=["17","11","14","Vazia","Todas"],standard=["Conferência Iniciada","Conferência Concluída","Enviado para Faturamento","Faturado","Coleta Iniciada","Processado"],fromCsv=currentMetrics.slaRecords.map(item=>item.status),statuses=Array.from(new Set([...standard,...fromCsv].filter(Boolean))).sort((a,b)=>a.localeCompare(b,"pt-BR"));$("#sla-profile-series").innerHTML=series.map(value=>'<label class="profile-check"><input type="checkbox" value="'+escapeHtml(value)+'"> '+escapeHtml(value)+"</label>").join("");$("#sla-profile-statuses").innerHTML=statuses.map(value=>'<label class="profile-check"><input type="checkbox" value="'+escapeHtml(value)+'"> '+escapeHtml(value)+"</label>").join("");$("#sla-profile-business-days").innerHTML=pickupDayNames.map((value,index)=>'<label class="profile-check"><input type="checkbox" value="'+index+'" '+(index>=1&&index<=5?'checked':'')+'> '+value.slice(0,3)+"</label>").join("")}
-function profileServices(){return Array.from(new Set((currentMetrics.slaRecords||[]).map(item=>item.service).filter(value=>value&&value!=="Serviço não informado"))).sort((a,b)=>a.localeCompare(b,"pt-BR"))}
+function profileFromForm(){
+  const now=new Date().toISOString();
+  return{
+    id:$("#sla-profile-id").value||("sla_"+Date.now()+"_"+Math.random().toString(36).slice(2,7)),
+    schemaVersion:5,
+    name:$("#sla-profile-name").value.trim(),
+    description:$("#sla-profile-description").value.trim(),
+    active:$("#sla-profile-active").value==="1",
+    priority:Math.max(1,Number($("#sla-profile-priority").value)||100),
+    services:selectedValues("#sla-profile-carriers"),
+    cutoff:$("#sla-profile-cutoff").value||"20:00",
+    deadlineTime:$("#sla-profile-deadline-time").value||"23:59",
+    dispatchDay:$("#sla-profile-dispatch-day").value==="next_day"?"next_day":"same_day",
+    createdAt:now,
+    updatedAt:now
+  };
+}
+function profileServices(){return Array.from(new Set([...(currentMetrics.slaRecords||[]),...(currentMetrics.slaCentralRecords||[])].map(item=>item.service).filter(value=>value&&value!=="Serviço não informado"))).sort((a,b)=>a.localeCompare(b,"pt-BR"))}
 function renderPrettyServiceSelect(query=""){const select=$("#sla-profile-carriers"),picker=$("#sla-service-picker");if(!select||!picker)return;const selected=selectedValues("#sla-profile-carriers"),normalizedQuery=normalizeHeader(query),options=Array.from(select.options).filter(option=>!option.disabled&&(!normalizedQuery||normalizeHeader(option.textContent).includes(normalizedQuery)));const values=picker.querySelector(".pretty-selected-values"),list=picker.querySelector(".pretty-options");if(!values||!list)return;values.innerHTML=selected.length?(selected.slice(0,2).map(value=>'<span class="pretty-value-chip">'+escapeHtml(value)+'</span>').join("")+(selected.length>2?'<span class="pretty-count">+'+(selected.length-2)+'</span>':"")):'<span class="pretty-placeholder">Selecione um ou mais serviços</span>';list.innerHTML=options.length?options.map(option=>'<label class="pretty-option '+(option.selected?'selected':'')+'"><input type="checkbox" data-pretty-service="'+escapeHtml(option.value)+'" '+(option.selected?'checked':'')+'><span>'+escapeHtml(option.textContent)+'</span>'+(option.selected?'<small>Selecionado</small>':'')+'</label>').join(""):'<div class="pretty-empty">Nenhum serviço encontrado</div>'}
 function enhanceServiceSelect(){const select=$("#sla-profile-carriers");if(!select||$("#sla-service-picker"))return;select.classList.add("pretty-multiselect-native");select.insertAdjacentHTML("afterend",'<div class="pretty-multiselect" id="sla-service-picker"><button type="button" class="pretty-multiselect-trigger" aria-expanded="false"><span class="pretty-selected-values"><span class="pretty-placeholder">Selecione um ou mais serviços</span></span><b class="pretty-chevron">⌄</b></button><div class="pretty-multiselect-menu"><div class="pretty-search-wrap"><input class="pretty-multiselect-search" placeholder="Pesquisar serviço..."></div><div class="pretty-options"></div></div></div>');const picker=$("#sla-service-picker"),trigger=picker.querySelector(".pretty-multiselect-trigger"),search=picker.querySelector(".pretty-multiselect-search");trigger.addEventListener("click",()=>{const willOpen=!picker.classList.contains("open");document.querySelectorAll(".pretty-multiselect.open").forEach(item=>item.classList.remove("open"));picker.classList.toggle("open",willOpen);trigger.setAttribute("aria-expanded",String(willOpen));if(willOpen)setTimeout(()=>search.focus(),0)});picker.querySelector(".pretty-multiselect-menu").addEventListener("click",event=>event.stopPropagation());search.addEventListener("input",()=>renderPrettyServiceSelect(search.value));picker.querySelector(".pretty-options").addEventListener("change",event=>{const input=event.target.closest("[data-pretty-service]");if(!input)return;const option=Array.from(select.options).find(item=>item.value===input.dataset.prettyService);if(option)option.selected=input.checked;select.dispatchEvent(new Event("change",{bubbles:true}));renderPrettyServiceSelect(search.value);updateProfileSummary()});document.addEventListener("click",event=>{if(!picker.contains(event.target)){picker.classList.remove("open");trigger.setAttribute("aria-expanded","false")}});renderPrettyServiceSelect()}
-function profileTransporters(){return Array.from(new Set((currentMetrics.slaRecords||[]).map(item=>item.carrier).filter(value=>value&&value!=="Transportadora não informada"))).sort((a,b)=>a.localeCompare(b,"pt-BR"))}
-function updateProfileMatchVisibility(){const mode=$("#sla-profile-match-mode")?.value||"service",showCarrier=mode!=="service",showService=mode!=="carrier";document.querySelectorAll("[data-profile-carrier-match]").forEach(item=>item.hidden=!showCarrier);document.querySelectorAll("[data-profile-service-match]").forEach(item=>item.hidden=!showService)}
-function ensureProfileMatchFields(){if($("#sla-profile-match-mode"))return;const serviceToggle=$("#sla-profile-all-carriers")?.parentElement,serviceField=$("#sla-profile-carriers")?.closest(".sla-field");if(!serviceToggle||!serviceField)return;serviceToggle.dataset.profileServiceMatch="";serviceField.dataset.profileServiceMatch="";const block=document.createElement("div");block.className="profile-match-config";block.innerHTML='<div class="sla-field span-2"><label>Validar SLA por</label><select id="sla-profile-match-mode"><option value="service">Somente Serviço da Transportadora</option><option value="carrier">Somente Transportadora</option><option value="both">Transportadora e Serviço</option><option value="either">Transportadora ou Serviço</option></select><small>Define como a Central de SLA associa cada pedido a este perfil.</small></div><label class="profile-toggle span-2" data-profile-carrier-match><input type="checkbox" id="sla-profile-all-transporters"> Todas as transportadoras</label><div class="sla-field span-2" data-profile-carrier-match><label>Transportadora · seleção múltipla</label><select id="sla-profile-transporters" multiple size="5"><option disabled>Importe o CSV para listar</option></select></div>';serviceToggle.closest(".profile-section").insertBefore(block,serviceToggle);$("#sla-profile-match-mode").addEventListener("change",updateProfileMatchVisibility)}
-function populateProfileCarriers(){ensureProfileMatchFields();const select=$("#sla-profile-carriers"),selected=selectedValues("#sla-profile-carriers"),services=profileServices();select.innerHTML=services.length?services.map(value=>'<option value="'+escapeHtml(value)+'">'+escapeHtml(value)+"</option>").join(""):'<option disabled>Importe o CSV para listar os serviços</option>';Array.from(select.options).forEach(option=>option.selected=selected.includes(option.value));enhanceServiceSelect();renderPrettyServiceSelect();const transporterSelect=$("#sla-profile-transporters"),selectedTransporters=selectedValues("#sla-profile-transporters"),transporters=profileTransporters();transporterSelect.innerHTML=transporters.length?transporters.map(value=>'<option value="'+escapeHtml(value)+'">'+escapeHtml(value)+"</option>").join(""):'<option disabled>Importe o CSV para listar as transportadoras</option>';Array.from(transporterSelect.options).forEach(option=>option.selected=selectedTransporters.includes(option.value));const allLabel=$("#sla-profile-all-carriers")?.parentElement,fieldLabel=select?.closest(".sla-field")?.querySelector("label"),description=$("#sla-profile-form-title")?.closest(".card-head")?.querySelector("p"),version=$("#sla-profile-form-title")?.closest(".card-head")?.querySelector(".profile-version");if(allLabel)allLabel.lastChild.textContent=" Todos os serviços da transportadora";if(fieldLabel)fieldLabel.textContent="Serviço da Transportadora · seleção múltipla";if(description)description.textContent="Associe a regra por transportadora, serviço ou pela combinação dos dois";if(version)version.textContent="SCHEMA V3";updateProfileMatchVisibility()}
-function updateProfileRuleFields(){const type=$("#sla-profile-type").value;document.querySelectorAll(".profile-rule-field").forEach(field=>field.hidden=!field.dataset.ruleTypes.split(" ").includes(type));updateProfileSummary()}
+function populateProfileCarriers(){const select=$("#sla-profile-carriers");if(!select)return;const selected=selectedValues("#sla-profile-carriers"),services=Array.from(new Set([...profileServices(),...selected])).sort((a,b)=>a.localeCompare(b,"pt-BR"));select.innerHTML=services.length?services.map(value=>'<option value="'+escapeHtml(value)+'">'+escapeHtml(value)+"</option>").join(""):'<option disabled>Importe o CSV para listar os serviços</option>';Array.from(select.options).forEach(option=>option.selected=selected.includes(option.value));enhanceServiceSelect();renderPrettyServiceSelect()}
+function updateProfileRuleFields(){updateProfileSummary()}
 function updateProfileSummary(){if(!$("#sla-profile-summary"))return;$("#sla-profile-summary").textContent=profileRuleSummary(profileFromForm())}
-function clearProfileForm(){$("#sla-profile-form").reset();$("#sla-profile-id").value="";$("#sla-profile-priority").value="100";$("#sla-profile-alerts").value="120, 60, 30";$("#sla-profile-form-title").textContent="Novo perfil";renderProfileChecks();populateProfileCarriers();$("#sla-profile-match-mode").value="service";updateProfileMatchVisibility();updateProfileRuleFields()}
-function setChecked(container,values){document.querySelectorAll(container+' input[type="checkbox"]').forEach(input=>input.checked=(values||[]).map(String).includes(input.value))}
-function editSlaProfile(profile){clearProfileForm();const match=profile.match||{},legacyUsesService=profile.schemaVersion>=2||Array.isArray(match.services)||match.allServices!==undefined,mode=match.mode||(legacyUsesService?"service":"carrier"),services=match.services||[],carriers=match.carriers||[];$("#sla-profile-id").value=profile.id;$("#sla-profile-name").value=profile.name||"";$("#sla-profile-description").value=profile.description||"";$("#sla-profile-active").value=profile.active?"1":"0";$("#sla-profile-priority").value=profile.priority||100;$("#sla-profile-notes").value=profile.notes||"";$("#sla-profile-match-mode").value=mode;$("#sla-profile-all-transporters").checked=Boolean(match.allCarriers);Array.from($("#sla-profile-transporters").options).forEach(option=>option.selected=carriers.includes(option.value));$("#sla-profile-all-carriers").checked=Boolean(match.allServices);Array.from($("#sla-profile-carriers").options).forEach(option=>option.selected=services.includes(option.value));renderPrettyServiceSelect();setChecked("#sla-profile-series",match.series);setChecked("#sla-profile-statuses",match.statuses);const rule=profile.rule||{};$("#sla-profile-type").value=rule.type||"hours";$("#sla-profile-source").value=rule.source||"imported";[["#sla-profile-hours",rule.hours],["#sla-profile-cutoff",rule.cutoff],["#sla-profile-deadline-time",rule.deadlineTime],["#sla-profile-fixed-date",rule.fixedDate],["#sla-profile-fixed-time",rule.fixedTime],["#sla-profile-offset-days",rule.offsetDays],["#sla-profile-offset-hours",rule.offsetHours]].forEach(([selector,value])=>{if(value!=null)$(selector).value=value});setChecked("#sla-profile-business-days",(profile.calendar||{}).businessDays);$("#sla-profile-holidays").value=((profile.calendar||{}).holidayDates||[]).join(", ");$("#sla-profile-alerts").value=((profile.alerts||{}).thresholdMinutes||[]).join(", ");$("#sla-profile-exceptions").value=(profile.exceptions||[]).join("\n");$("#sla-profile-form-title").textContent="Editar · "+profile.name;updateProfileMatchVisibility();updateProfileRuleFields();$("#page-sla-profiles").scrollIntoView({behavior:"smooth"})}
-function profileMatchLabel(profile){const match=profile.match||{},legacyUsesService=profile.schemaVersion>=2||Array.isArray(match.services)||match.allServices!==undefined,mode=match.mode||(legacyUsesService?"service":"carrier"),labels={service:"Serviço",carrier:"Transportadora",both:"Transportadora e Serviço",either:"Transportadora ou Serviço"},carrierCount=match.allCarriers?"todas":fmt((match.carriers||[]).length),serviceCount=match.allServices?"todos":fmt((match.services||[]).length);if(mode==="carrier")return labels[mode]+" · "+carrierCount;if(mode==="service")return labels[mode]+" · "+serviceCount;return labels[mode]+" · "+carrierCount+" transp. / "+serviceCount+" serv."}
-function renderSlaProfileList(){const sorted=[...slaProfiles].sort((a,b)=>(Number(a.priority)||9999)-(Number(b.priority)||9999)||a.name.localeCompare(b.name,"pt-BR"));$("#sla-profile-count").textContent=fmt(sorted.length)+" perfil(is)";$("#sla-profile-list").innerHTML=sorted.length?'<div class="profile-row header"><span>Perfil</span><span>Validação</span><span>Tipo</span><span>SLA</span><span>Situação</span><span>Ações</span></div>'+sorted.map(profile=>'<div class="profile-row"><span><strong>'+escapeHtml(profile.name)+'</strong><small>Prioridade '+fmt(profile.priority)+'</small></span><strong>'+escapeHtml(profileMatchLabel(profile))+'</strong><span>'+escapeHtml(profileTypeLabels[(profile.rule||{}).type]||"—")+'</span><span><small>'+escapeHtml(profileRuleSummary(profile))+'</small></span><span><i class="profile-status '+(profile.active?'':'off')+'">'+(profile.active?'Ativo':'Inativo')+'</i></span><span class="profile-actions"><button data-profile-action="edit" data-profile-id="'+profile.id+'">Editar</button><button data-profile-action="duplicate" data-profile-id="'+profile.id+'">Duplicar</button><button data-profile-action="delete" data-profile-id="'+profile.id+'">Excluir</button></span></div>').join(""):'<div class="profile-empty"><strong>Nenhum perfil cadastrado</strong><br>Pedidos continuarão pesquisáveis, mas aparecerão como SLA não configurado.</div>'}
-function refreshSlaConsumers(){renderSlaProfileList();renderSlaCentral(true);renderIo(currentMetrics);renderPickupDashboard()}
-function pickupCarriers(metrics){return Array.from(new Set([...(metrics.ioOrders||[]),...(metrics.slaRecords||[])].map(item=>item.carrier).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"pt-BR"))}
+function clearProfileForm(){$("#sla-profile-form").reset();$("#sla-profile-id").value="";$("#sla-profile-priority").value="100";$("#sla-profile-cutoff").value="20:00";$("#sla-profile-deadline-time").value="23:59";$("#sla-profile-dispatch-day").value="same_day";$("#sla-profile-form-title").textContent="Novo perfil";Array.from($("#sla-profile-carriers").options).forEach(option=>option.selected=false);populateProfileCarriers();updateProfileSummary()}
+function editSlaProfile(profile){clearProfileForm();const services=profileServiceValues(profile);$("#sla-profile-id").value=profile.id;$("#sla-profile-name").value=profile.name||"";$("#sla-profile-description").value=profile.description||"";$("#sla-profile-active").value=profile.active?"1":"0";$("#sla-profile-priority").value=profile.priority||100;$("#sla-profile-cutoff").value=profileCutoff(profile);$("#sla-profile-deadline-time").value=profileDeadlineTime(profile);$("#sla-profile-dispatch-day").value=profileDispatchDay(profile);const select=$("#sla-profile-carriers"),available=Array.from(new Set([...Array.from(select.options).map(option=>option.value),...services])).filter(Boolean).sort((a,b)=>a.localeCompare(b,"pt-BR"));select.innerHTML=available.map(value=>'<option value="'+escapeHtml(value)+'">'+escapeHtml(value)+"</option>").join("");Array.from(select.options).forEach(option=>option.selected=normalizedListIncludes(services,option.value));renderPrettyServiceSelect();$("#sla-profile-form-title").textContent="Editar · "+profile.name;updateProfileSummary();$("#page-sla-profiles").scrollIntoView({behavior:"smooth"})}
+function renderSlaProfileList(){const sorted=[...slaProfiles].sort((a,b)=>(Number(a.priority)||9999)-(Number(b.priority)||9999)||String(a.name).localeCompare(String(b.name),"pt-BR"));$("#sla-profile-count").textContent=fmt(sorted.length)+" perfil(is)";$("#sla-profile-list").innerHTML=sorted.length?'<div class="profile-row header"><span>Perfil</span><span>Serviços</span><span>Importação</span><span>Expedição</span><span>Prazo base</span><span>Situação</span><span>Ações</span></div>'+sorted.map(profile=>'<div class="profile-row"><span><strong>'+escapeHtml(profile.name)+'</strong><small>Prioridade '+fmt(profile.priority)+'</small></span><span><strong>'+fmt(profileServiceValues(profile).length)+'</strong><small>'+escapeHtml(profileServiceValues(profile).slice(0,2).join(" · ")||"Não configurado")+'</small></span><strong>'+escapeHtml(profileCutoff(profile))+'</strong><strong>'+escapeHtml(profileDeadlineTime(profile))+'</strong><span><small>'+(profileDispatchDay(profile)==="next_day"?"Dia seguinte · após corte D+2":"Mesmo dia · após corte D+1")+'</small></span><span><i class="profile-status '+(profile.active?'':'off')+'">'+(profile.active?'Ativo':'Inativo')+'</i></span><span class="profile-actions"><button data-profile-action="edit" data-profile-id="'+profile.id+'">Editar</button><button data-profile-action="duplicate" data-profile-id="'+profile.id+'">Duplicar</button><button data-profile-action="delete" data-profile-id="'+profile.id+'">Excluir</button></span></div>').join(""):'<div class="profile-empty"><strong>Nenhum perfil cadastrado</strong><br>Todos os serviços usarão automaticamente o prazo de 48 horas corridas.</div>'}
+function refreshSlaConsumers(){renderSlaProfileList();renderSlaCentral(true);renderPickupDashboard()}
+
+/* ===================== GRADES E ALERTAS DE COLETA ===================== */
+
+function pickupCarriers(metrics){return Array.from(new Set([...(metrics.gembaOrders||[]),...(metrics.slaRecords||[])].map(item=>item.carrier).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"pt-BR"))}
 function populatePickupCarrier(metrics){const select=$("#pickup-carrier"),current=select.value,carriers=pickupCarriers(metrics);select.innerHTML='<option value="">Selecione a transportadora</option>'+carriers.map(carrier=>'<option value="'+escapeHtml(carrier)+'">'+escapeHtml(carrier)+'</option>').join('');if(carriers.includes(current))select.value=current}
 function loadPickupForm(carrier){const schedule=carrierSchedule(carrier)||{};document.querySelectorAll("[data-pickup-day]").forEach(input=>input.value=(schedule[input.dataset.pickupDay]||[]).join(", "))}
-function renderPickupSavedList(){const names=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR"));$("#pickup-saved-list").innerHTML=names.length?names.map(name=>{const schedule=pickupSchedules[name],summary=pickupDayNames.map((day,index)=>(schedule[String(index)]||[]).length?day.slice(0,3)+" "+schedule[String(index)].join("/"):"").filter(Boolean).join(" · ");return '<div class="pickup-saved-item"><span><strong>'+escapeHtml(name)+'</strong><small>'+escapeHtml(summary||"Sem horários")+'</small></span><button class="danger-mini" data-delete-pickup="'+escapeHtml(name)+'">Excluir</button></div>'}).join(''):'<div class="io-empty">Nenhuma grade cadastrada.</div>'}
+function renderPickupSavedList(){const names=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR"));$("#pickup-saved-list").innerHTML=names.length?names.map(name=>{const schedule=pickupSchedules[name],summary=pickupDayNames.map((day,index)=>(schedule[String(index)]||[]).length?day.slice(0,3)+" "+schedule[String(index)].join("/"):"").filter(Boolean).join(" · ");return '<div class="pickup-saved-item"><span><strong>'+escapeHtml(name)+'</strong><small>'+escapeHtml(summary||"Sem horários")+'</small></span><button class="danger-mini" data-delete-pickup="'+escapeHtml(name)+'">Excluir</button></div>'}).join(''):'<div class="empty-state">Nenhuma grade cadastrada.</div>'}
 function allUpcomingPickups(afterDate){const result=[];Object.keys(pickupSchedules).forEach(carrier=>{const date=nextPickupForCarrier(carrier,afterDate);if(date)result.push({carrier,date,stamp:date.getTime()})});return result.sort((a,b)=>a.stamp-b.stamp)}
 function isSpecialSeries14Alert(record){const carrier=normalizeHeader(record.carrier),special=carrier.includes("fl brasil")||carrier.includes("viviane")||carrier.includes("patrus");return special&&record.series==="14"&&record.importedStamp&&Date.now()-record.importedStamp>3*86400000}
 function pendingPickupFlowGroups(){const groups=new Map();enrichedSlaRecords().forEach(record=>{if(record.load!=="Sem carga"||normalizeHeader(record.status).includes("coleta iniciada")||(!record.slaApplicable&&!isSpecialSeries14Alert(record)))return;const key=normalizeHeader(record.carrier);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(record)});return groups}
@@ -852,10 +1210,13 @@ function renderPickupDashboard(){
   const days=Array.from({length:7},(_,offset)=>{const date=new Date(now);date.setDate(date.getDate()+offset);date.setHours(0,0,0,0);const slots=[];Object.entries(pickupSchedules).forEach(([carrier,schedule])=>(schedule[String(date.getDay())]||[]).forEach(time=>{const [hour,minute]=time.split(":").map(Number),stamp=new Date(date);stamp.setHours(hour,minute,0,0);slots.push({carrier,time,stamp:stamp.getTime()})}));slots.sort((a,b)=>a.stamp-b.stamp);return{date,slots}});
   const week='<div class="pickup-week">'+days.map((day,index)=>'<article class="card pickup-day '+(index===0?'today':'')+'"><h3>'+pickupDayNames[day.date.getDay()]+'</h3><small>'+day.date.toLocaleDateString("pt-BR")+(index===0?' · hoje':'')+'</small>'+(day.slots.length?day.slots.map(slot=>'<div class="pickup-slot '+(next&&slot.stamp===next.stamp&&normalizeHeader(slot.carrier)===normalizeHeader(next.carrier)?'next':'')+'"><strong>'+escapeHtml(slot.time)+' · '+escapeHtml(carrierShort(slot.carrier))+'</strong><small>'+fmt(pendingPickupFlow(slot.carrier,flowGroups).length)+' em fluxo sem carga</small></div>').join(''):'<div class="pickup-help">Sem coleta</div>')+'</article>').join('')+'</div>';
   const rows=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR")).map(carrier=>'<div class="pickup-table-row"><strong>'+escapeHtml(carrier)+'</strong>'+Array.from({length:7},(_,index)=>'<span>'+escapeHtml((pickupSchedules[carrier][String(index)]||[]).join(" / ")||"—")+'</span>').join('')+'<span>'+fmt(pendingPickupFlow(carrier,flowGroups).length)+' pend.</span></div>').join('');
-  const table='<article class="card"><div class="card-head"><div><h2>Grade semanal completa</h2><p>Série 17 em fluxo e Série 14 acima de 3 dias para FL Brasil, Viviane e Patrus</p></div></div><div class="pickup-table"><div class="pickup-table-row header"><span>Transportadora</span>'+pickupDayNames.map(day=>'<span>'+day.slice(0,3)+'</span>').join('')+'<span>Alerta</span></div>'+(rows||'<div class="io-empty">Nenhuma grade cadastrada.</div>')+'</div></article>';
+  const table='<article class="card"><div class="card-head"><div><h2>Grade semanal completa</h2><p>Série 17 em fluxo e Série 14 acima de 3 dias para FL Brasil, Viviane e Patrus</p></div></div><div class="pickup-table"><div class="pickup-table-row header"><span>Transportadora</span>'+pickupDayNames.map(day=>'<span>'+day.slice(0,3)+'</span>').join('')+'<span>Alerta</span></div>'+(rows||'<div class="empty-state">Nenhuma grade cadastrada.</div>')+'</div></article>';
   $("#pickup-dashboard").innerHTML=nextHtml+week+table;
 }
 
+/* ===================== ORQUESTRAÇÃO DA INTERFACE ===================== */
+
+// Chamado após cada importação e sincronização; mantém todas as páginas com a mesma base.
 function render(metrics) {
   $("#kpi-triados").textContent = fmt(metrics.triaged);
   $("#kpi-expedidos").textContent = fmt(metrics.processedToday);
@@ -872,6 +1233,7 @@ function render(metrics) {
     ? "Última data processada: " + metrics.d1Date
     : "Última data processada diferente da atual";
   $("#summary-hoje").innerHTML = summaryHtml(metrics.dispatchedToday);
+  $("#overview-summary-preview").textContent = generateOverviewSummary(metrics);
   $("#b2c-table").innerHTML = pendingMatrixHtml(metrics.b2cHourly, false);
   $("#b2b-table").innerHTML = pendingMatrixHtml(metrics.b2bHourly, true);
   $("#b2c-conference-summary").innerHTML = conferenceSummaryHtml(metrics.b2cHourly, false);
@@ -885,8 +1247,8 @@ function render(metrics) {
   $("#dispatch-carrier-card").textContent = metrics.lastDispatch ? metrics.lastDispatch.carrier : "Aguardando importação";
   $("#dispatch-time-card").textContent = metrics.lastDispatch ? metrics.lastDispatch.processedAt : "—";
   renderSlaCentral(true);
-  renderIo(metrics);
-  populatePickupCarrier(metrics);renderPickupSavedList();renderPickupDashboard();renderProfileChecks();populateProfileCarriers();renderSlaProfileList();updateProfileRuleFields();
+  renderGemba(metrics);
+  populatePickupCarrier(metrics);renderPickupSavedList();renderPickupDashboard();populateProfileCarriers();renderSlaProfileList();updateProfileRuleFields();
 }
 
 function showToast(message, error) {
@@ -895,6 +1257,32 @@ function showToast(message, error) {
   toast.className = "toast show" + (error ? " error" : "");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.className = "toast", error ? 10000 : 3500);
+}
+
+function generateOverviewSummary(metrics=currentMetrics,referenceDate=new Date()) {
+  const blocks = [
+    ["Triados", metrics.triagedSummary],
+    ["sem pdf", metrics.withoutPdfSummary],
+    ["expedidos d1", metrics.dispatchedYesterday],
+    ["expedidos hoje", metrics.dispatchedToday]
+  ];
+  return [greetingForTime(referenceDate)+"!", ...blocks.flatMap(([title,summary]) => [
+    "",
+    title,
+    "pedidos: "+fmt(summary.orders),
+    "total peças: "+fmt(summary.products),
+    "volumes: "+fmt(summary.volumes)
+  ])].join("\n");
+}
+
+async function copyOverviewSummary() {
+  if (!currentMetrics.fileName) return showToast("Importe um CSV antes de copiar o resumo.", true);
+  try {
+    await writeClipboardText(generateOverviewSummary());
+    showToast("Resumo da Visão geral copiado com sucesso.");
+  } catch (error) {
+    showToast("Não foi possível copiar o resumo neste navegador.", true);
+  }
 }
 
 function exportSummary() {
@@ -1021,7 +1409,14 @@ function exportDashboardImage() {
 
 function exportDetailPageImage(pageId) {
   const isPin = pageId === "page-pin";
+  const isSla = pageId === "page-faturamento";
   const pinGroups = isPin ? groupPinDetails(currentMetrics.pinDetails) : [];
+  const slaImageModel = isSla ? buildSlaCentralModel(currentMetrics) : null;
+  const slaExportAreaHeight = areaData => {
+    if (!areaData?.records.length) return 170;
+    const bodyHeight=areaData.dates.reduce((height,date)=>height+60+([slaImageModel.todayKey,slaImageModel.d1Key].includes(date.key)?date.hours.size*54:0),0);
+    return 76+58+bodyHeight+64;
+  };
   let pinContentHeight = 0;
   for (let index = 0; index < pinGroups.length; index += 2) {
     const leftHeight = 104 + pinGroups[index].orders.length * 46;
@@ -1029,8 +1424,9 @@ function exportDetailPageImage(pageId) {
     pinContentHeight += Math.max(leftHeight, rightHeight) + 24;
   }
   const canvas = document.createElement("canvas");
-  canvas.width = 1800;
-  canvas.height = isPin ? Math.max(1100, 250 + pinContentHeight) : 1120;
+  const slaCarrierCount=isSla?Math.max(1,...["billing","shipping"].map(area=>new Set(slaImageModel.areas[area].records.map(record=>record.carrierNormalized)).size)):0;
+  canvas.width = isSla ? Math.max(1800,610+slaCarrierCount*180) : 1800;
+  canvas.height = isPin ? Math.max(1100, 250 + pinContentHeight) : isSla ? 260+slaExportAreaHeight(slaImageModel.areas.billing)+slaExportAreaHeight(slaImageModel.areas.shipping) : 1120;
   const context = canvas.getContext("2d");
   if (!context) { setExportBusy(false); return showToast("O navegador não oferece suporte à exportação.", true); }
   const dark = document.body.dataset.theme === "dark";
@@ -1059,17 +1455,17 @@ function exportDetailPageImage(pageId) {
     return result + "…";
   };
   const pageTitles = {
-    "page-triados": "Triados por transportadora", "page-produtividade": "Produtividade", "page-io": "I.O · Inteligência Operacional", "page-pin": "Solicitação PIN",
+    "page-triados": "Triados por transportadora", "page-produtividade": "Produtividade", "page-gemba": "GEMBA", "page-pin": "Solicitação PIN",
     "page-conferencia-b2c": "Conferência Doca · B2C",
     "page-conferencia-b2b": "Conferência Doca · B2B",
-    "page-faturamento": "Central inteligente de SLA", "page-transportadoras": "Transportadoras · Grade de coleta",
-    "page-relatorios": "Relatórios", "page-sla-profiles": "Cadastro de Perfis de SLA", "page-configuracoes": "Configurações"
+    "page-faturamento": "Expedição Pedidos", "page-transportadoras": "Transportadoras · Grade de coleta",
+    "page-relatorios": "Relatórios", "page-sla-profiles": "Perfis de prioridade SLA", "page-configuracoes": "Configurações"
   };
   context.fillStyle = colors.background; context.fillRect(0, 0, canvas.width, canvas.height);
   drawText("LUFT · STATUS OPERACIONAL", 70, 55, 18, colors.blue, 800);
   drawText(pageTitles[pageId] || "Status operacional", 70, 108, 38, colors.text, 800);
   drawText(currentMetrics.fileName + " · " + fmt(currentMetrics.recordCount) + " registros", 70, 150, 15, colors.muted, 500);
-  drawText(new Date().toLocaleString("pt-BR"), 1730, 70, 15, colors.muted, 600, "right");
+  drawText(new Date().toLocaleString("pt-BR"), canvas.width-70, 70, 15, colors.muted, 600, "right");
 
   if (pageId === "page-conferencia-b2c" || pageId === "page-conferencia-b2b") {
     const showVolumes = pageId === "page-conferencia-b2b";
@@ -1196,21 +1592,51 @@ function exportDetailPageImage(pageId) {
     const gradient=context.createLinearGradient(70,0,1730,0);gradient.addColorStop(0,"#15243d");gradient.addColorStop(1,"#28558f");rect(70,190,1660,150,gradient,null,16);
     drawText("PRÓXIMA TRANSPORTADORA",105,225,12,"#b8c7dc",800);drawText(next?fitText(next.carrier,900):"Nenhuma coleta cadastrada",105,270,28,"#fff",900);drawText(next?next.date.toLocaleString("pt-BR"):"Cadastre em Configurações",105,307,14,"#dbe7f7",600);drawText(next?humanDuration(next.stamp-Date.now()).replace("vence em ",""):"—",1680,255,28,"#fff",900,"right");drawText(next&&pending.length?fmt(pending.length)+" pedidos sem carga/coleta":"Nenhuma pendência crítica",1680,302,13,pending.length?"#fca5a5":"#86efac",800,"right");
     drawText("GRADE SEMANAL",70,390,16,colors.text,900);const names=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR"));const startY=430,rowH=52;names.slice(0,11).forEach((carrier,index)=>{const y=startY+index*rowH;rect(70,y,1660,rowH-6,colors.panel,colors.line,8);drawText(fitText(carrier,370),90,y+23,11,colors.text,800);pickupDayNames.forEach((day,dayIndex)=>{drawText(fitText((pickupSchedules[carrier][String(dayIndex)]||[]).join(" / ")||"—",130),520+dayIndex*155,y+23,10,colors.muted,700,"center")});drawText(fmt(pendingPickupFlow(carrier,flowGroups).length)+" pend.",1705,y+23,10,colors.text,800,"right")});pickupDayNames.forEach((day,index)=>drawText(day.slice(0,3).toUpperCase(),520+index*155,410,9,colors.muted,800,"center"));
-  } else if (pageId === "page-io") {
-    const io=calculateIo(currentMetrics),configured=ioConfig.metaB2c+ioConfig.metaB2b>0;
-    const kpis=[["CONFIANÇA",io.confidence+"%",colors.blue],["TEMPO RESTANTE",clockDuration(io.shift.hours),"#8b5cf6"],["CAPACIDADE TOTAL",fmt(Math.floor(io.capacities.total)),"#22c55e"],["NECESSIDADE",fmt(Math.ceil(io.adjustedRemainingB2c+io.adjustedRemainingB2b)),"#f97316"]];
-    kpis.forEach((item,index)=>{const x=70+index*415;rect(x,195,395,125,colors.panel,colors.line,13);drawText(item[0],x+20,225,11,colors.muted,800);drawText(item[1],x+20,275,31,colors.text,900);context.fillStyle=item[2];context.fillRect(x,313,395,7)});
-    [["B2C",io.fatB2c,ioConfig.metaB2c,io.adjustedRemainingB2c,io.capacities.b2c],["B2B",io.fatB2b,ioConfig.metaB2b,io.adjustedRemainingB2b,io.capacities.b2b]].forEach((item,index)=>{const x=70+index*835;rect(x,360,805,165,colors.panel,colors.line,13);drawText("META "+item[0],x+22,390,14,colors.text,900);[["PRODUZIDO",item[1]],["META",item[2]],["FALTA AJUSTADA",item[3]],["CAPACIDADE",Math.floor(item[4])]].forEach((field,column)=>{const fx=x+22+column*190;drawText(field[0],fx,430,9,colors.muted,800);drawText(fmt(field[1]),fx,468,24,colors.text,900)});drawText(item[4]>=item[3]?"✓ Capacidade suficiente":"⚠ Déficit de "+fmt(Math.ceil(item[3]-item[4])),x+22,505,12,item[4]>=item[3]?"#22c55e":"#ef4444",800)});
-    drawText("RANKING INTELIGENTE",70,575,15,colors.text,900);io.waves.slice(0,6).forEach((wave,index)=>{const y=610+index*66;rect(70,y,790,52,colors.panel,colors.line,9);drawText((index+1)+"º",90,y+26,13,colors.blue,900);drawText("Onda "+wave.wave+" · "+wave.segment.toUpperCase()+(wave.slaRisk?" · SLA CRÍTICO":""),135,y+18,12,colors.text,800);drawText(fmt(wave.pieces)+" peças · índice "+wave.opportunityScore,135,y+36,10,colors.muted,600)});
-    drawText("LEITURA EXECUTIVA",910,575,15,colors.text,900);rect(910,610,820,280,colors.panel,colors.line,13);const top=io.waves[0];drawText(configured?(io.capacities.total>=io.adjustedRemainingB2c+io.adjustedRemainingB2b?"Meta alcançável":"Intervenção necessária") : "Configure metas e equipe",940,650,20,colors.text,900);drawText("Tempo restante: "+clockDuration(io.shift.hours),940,690,13,colors.muted,700);drawText("Pedidos críticos de SLA: "+fmt(io.urgentSla.length),940,725,13,io.urgentSla.length?"#ef4444":"#22c55e",700);drawText(top?"Melhor ação: iniciar Onda "+top.wave+" ("+top.segment.toUpperCase()+")":"Nenhuma onda pendente disponível",940,765,15,colors.blue,800);drawText("Capacidade calculada pela menor vazão entre separação e faturamento.",940,815,12,colors.muted,600);
+  } else if (pageId === "page-gemba") {
+    const gemba=calculateGembaMetrics(currentMetrics),flow=gemba.flow;
+    const flowTotal=flow.items.reduce((total,item)=>total+item.general,0),kpis=[["CLASSIF. ATIVAS",flow.items.length,colors.blue],["FLUXO GERAL",flowTotal,"#8b5cf6"],["PRODUZIDO B2C",gemba.production.b2c,"#06b6d4"],["PRODUZIDO B2B",gemba.production.b2b,"#22c55e"]];
+    kpis.forEach((item,index)=>{const x=70+index*415;rect(x,195,395,125,colors.panel,colors.line,13);drawText(item[0],x+20,225,11,colors.muted,800);drawText(fmt(item[1]),x+20,275,31,colors.text,900);context.fillStyle=item[2];context.fillRect(x,313,395,7)});
+    [["B2C",gemba.forecast.b2c],["B2B",gemba.forecast.b2b]].forEach((item,index)=>{const x=70+index*835,data=item[1];rect(x,360,805,190,colors.panel,colors.line,13);drawText("FORECAST "+item[0],x+22,390,14,colors.text,900);[["META ORIGINAL",data.meta],["PRODUZIDO",data.produced],["COMPENSAÇÃO",data.compensation],["AJUSTADA",data.adjusted]].forEach((field,column)=>{const fx=x+22+column*190;drawText(field[0],fx,430,9,colors.muted,800);drawText(fmt(field[1]),fx,468,24,colors.text,900)});drawText(data.remaining?"Faltam produzir "+fmt(data.remaining):"✓ Meta atingida",x+22,520,13,data.remaining?"#ef4444":"#22c55e",800)});
+    drawText("FLUXO OPERACIONAL",70,600,15,colors.text,900);if(flow.items.length)flow.items.forEach((item,index)=>{const column=index%2,row=Math.floor(index/2),x=70+column*835,y=625+row*57;rect(x,y,805,48,colors.panel,colors.line,9);drawText(item.label,x+18,y+28,11,colors.text,900);drawText("G "+fmt(item.general)+"  ·  I "+fmt(item.imported)+"  ·  F "+fmt(item.inFlow)+"  ·  A "+fmt(item.waiting),x+780,y+28,10,colors.blue,800,"right")});else drawText("Nenhuma classificação com pedidos nos status monitorados.",70,650,12,colors.muted,700);
+    drawText("ABS: "+fmt(gembaAbs.length),70,950,15,colors.text,900);drawText("G: geral · I: importado · F: em fluxo · A: aguardando separação",1730,950,11,colors.muted,700,"right");
   } else if (pageId === "page-faturamento") {
-    const records = enrichedSlaRecords().filter(record=>record.slaApplicable), counts = slaCounts(records), priorities = priorityGroups(records);
-    const cards = [["TOTAL PENDENTE",records.length,colors.blue],["DENTRO DO SLA",counts.safe,"#22c55e"],["VENCEM HOJE",counts.today,"#eab308"],["CRÍTICO · <2H",counts.critical,"#f97316"],["FORA DO SLA",counts.overdue,"#ef4444"]];
-    cards.forEach((item,index)=>{const x=70+index*332;rect(x,195,310,125,colors.panel,colors.line,13);drawText(item[0],x+20,225,11,colors.muted,800);drawText(fmt(item[1]),x+20,275,34,colors.text,900);context.fillStyle=item[2];context.fillRect(x,313,310,7)});
-    drawText("PRIORIDADES DA OPERAÇÃO",70,370,16,colors.text,800);
-    priorities.slice(0,6).forEach((group,index)=>{const y=405+index*82;rect(70,y,760,66,colors.panel,colors.line,10);drawText((index+1)+"º",92,y+33,15,colors.blue,900);drawText(fitText(carrierShort(group.carrier)+" · "+group.load,430),140,y+24,14,colors.text,800);drawText(fmt(group.items.length)+" pedidos · "+group.sector,140,y+45,11,colors.muted,600);drawText(humanDuration(group.due-Date.now()),805,y+33,12,"#ef4444",800,"right")});
-    drawText("RISCO POR TRANSPORTADORA",900,370,16,colors.text,800);
-    groupSlaRecords(records,"carrier").slice(0,8).forEach((group,index)=>{const y=405+index*70,c=slaCounts(group.items);rect(900,y,830,55,colors.panel,colors.line,9);drawText(fitText(group.name,370),920,y+20,12,colors.text,800);drawText(fmt(group.items.length)+" pedidos",920,y+39,10,colors.muted,600);drawText("🔴 "+fmt(c.overdue)+"   🟠 "+fmt(c.critical)+"   🟡 "+fmt(c.today)+"   🟢 "+fmt(c.safe),1705,y+28,12,colors.text,700,"right")});
+    const model=slaImageModel,tableX=70,tableWidth=canvas.width-140,firstWidth=300,totalWidth=170,sectionHeaderHeight=76,headerHeight=58,dateHeight=60,hourHeight=54,footerHeight=64;
+    const palette={overdue:dark?"#401b23":"#fff0f1",alert:dark?"#3c3214":"#fff8e1",today:dark?"#142b4a":"#eff6ff",d1:dark?"#182235":"#f8fafc",total:dark?"#19345b":"#eaf1ff",hour:colors.panel};
+    const drawMatrixCell=(x,y,width,height,fill)=>{context.fillStyle=fill;context.fillRect(x,y,width,height);context.strokeStyle=colors.line;context.lineWidth=1;context.strokeRect(x,y,width,height)};
+    const rowFill=(records,fallback)=>records.some(record=>record.delayed)?palette.overdue:records.some(record=>record.priorityToday&&!record.delayed)?palette.alert:fallback;
+    const drawCount=(records,x,y,width,height,fill,total=false)=>{
+      drawMatrixCell(x,y,width,height,total?palette.total:fill);
+      if(!records.length)return;
+      const delayed=records.filter(record=>record.delayed).length,dueToday=records.filter(record=>record.priorityToday&&!record.delayed).length,hasSignal=delayed||dueToday;
+      drawText(fmt(records.length),x+width/2,y+height/2-(hasSignal?7:0),15,colors.text,900,"center");
+      if(delayed)drawText(fmt(delayed)+" atrasado"+(delayed===1?"":"s"),x+width/2,y+height/2+12,7,"#ef4444",900,"center");
+      else if(dueToday)drawText(fmt(dueToday)+" para hoje",x+width/2,y+height/2+12,7,"#d97706",900,"center");
+    };
+    const drawSlaTable=(area,y)=>{
+      const areaData=model.areas[area],areaLabel=area==="billing"?"PENDENTES DE FATURAMENTO":"PENDENTES DE EXPEDIÇÃO",description=area==="billing"?"Importado · Formação de romaneio · Separação · Conferência iniciada":"Coleta iniciada · Faturado · Conferência concluída · Enviado para faturamento",height=slaExportAreaHeight(areaData);
+      rect(tableX,y,tableWidth,height,colors.panel,colors.line,16);
+      drawText(areaLabel,tableX+24,y+26,13,colors.text,900);
+      drawText(fitText(description,tableWidth-48),tableX+24,y+51,9,colors.muted,600);
+      if(!areaData.records.length){drawText("Nenhum pedido encontrado nesta etapa.",tableX+24,y+112,13,colors.muted,600);return y+height}
+      const carriers=model.carriers.filter(carrier=>areaData.records.some(record=>record.carrierNormalized===carrier.normalized)),carrierWidth=(tableWidth-firstWidth-totalWidth)/Math.max(1,carriers.length),headerY=y+sectionHeaderHeight;
+      drawMatrixCell(tableX,headerY,firstWidth,headerHeight,colors.header);drawText("DIA/HORÁRIO",tableX+16,headerY+headerHeight/2,9,"#fff",900);
+      carriers.forEach((carrier,index)=>{const x=tableX+firstWidth+index*carrierWidth;drawMatrixCell(x,headerY,carrierWidth,headerHeight,colors.header);context.font='900 9px "Segoe UI", Arial, sans-serif';drawText(fitText(String(carrier.label).toUpperCase(),carrierWidth-18),x+carrierWidth/2,headerY+headerHeight/2,9,"#fff",900,"center")});
+      const totalX=tableX+tableWidth-totalWidth;drawMatrixCell(totalX,headerY,totalWidth,headerHeight,colors.header);drawText("TOTAL",totalX+totalWidth/2,headerY+headerHeight/2,9,"#fff",900,"center");
+      let rowY=headerY+headerHeight;
+      areaData.dates.forEach(date=>{
+        const isToday=date.key===model.todayKey,isD1=date.key===model.d1Key,expanded=isToday||isD1,suffix=isToday?" — Hoje":isD1?" — D-1":"",fill=rowFill(date.records,isToday?palette.today:isD1?palette.d1:colors.panel);
+        drawMatrixCell(tableX,rowY,firstWidth,dateHeight,fill);rect(tableX+13,rowY+18,24,24,colors.panel,colors.line,7);drawText(expanded?"−":"+",tableX+25,rowY+30,13,colors.blue,900,"center");drawText(date.label+suffix,tableX+50,rowY+dateHeight/2,11,colors.text,900);
+        carriers.forEach((carrier,index)=>{const records=slaCentralRecordsForCarrier(date.records,carrier.normalized);drawCount(records,tableX+firstWidth+index*carrierWidth,rowY,carrierWidth,dateHeight,fill)});drawCount(date.records,totalX,rowY,totalWidth,dateHeight,fill,true);rowY+=dateHeight;
+        if(expanded)Array.from(date.hours.entries()).sort((a,b)=>a[0]-b[0]).forEach(([hour,hourRecords])=>{
+          const hourFill=rowFill(hourRecords,palette.hour);drawMatrixCell(tableX,rowY,firstWidth,hourHeight,hourFill);drawText("↳ "+String(hour).padStart(2,"0")+"h",tableX+50,rowY+hourHeight/2,10,colors.muted,800);
+          carriers.forEach((carrier,index)=>{const records=slaCentralRecordsForCarrier(hourRecords,carrier.normalized);drawCount(records,tableX+firstWidth+index*carrierWidth,rowY,carrierWidth,hourHeight,hourFill)});drawCount(hourRecords,totalX,rowY,totalWidth,hourHeight,hourFill,true);rowY+=hourHeight;
+        });
+      });
+      drawMatrixCell(tableX,rowY,firstWidth,footerHeight,palette.total);drawText("TOTAL POR TRANSPORTADORA",tableX+16,rowY+footerHeight/2,10,colors.text,900);
+      carriers.forEach((carrier,index)=>{const records=slaCentralRecordsForCarrier(areaData.records,carrier.normalized);drawCount(records,tableX+firstWidth+index*carrierWidth,rowY,carrierWidth,footerHeight,palette.total)});drawCount(areaData.records,totalX,rowY,totalWidth,footerHeight,palette.total,true);
+      return y+height;
+    };
+    const billingBottom=drawSlaTable("billing",190);drawSlaTable("shipping",billingBottom+26);
   } else if (pageId === "page-pin") {
     const cardWidth = 808, gap = 44, startX = 70, rowHeight = 46;
     let currentY = 195;
@@ -1250,7 +1676,8 @@ function exportDetailPageImage(pageId) {
   canvas.toBlob(blob => {
     if (!blob) { setExportBusy(false); return showToast("Não foi possível gerar a imagem.", true); }
     const url = URL.createObjectURL(blob), link = document.createElement("a");
-    link.href = url; link.download = pageId.replace("page-", "") + "-luft-" + new Date().toISOString().slice(0, 10) + ".png";
+    const fileName=pageId==="page-faturamento"?"expedicao-pedidos":pageId.replace("page-", "");
+    link.href = url; link.download = fileName + "-luft-" + new Date().toISOString().slice(0, 10) + ".png";
     link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     setExportBusy(false);
     showToast("Imagem da tela exportada.");
@@ -1269,6 +1696,8 @@ function setExportBusy(busy) {
 
 function closeExportMenu(){const control=$("#export-control"),button=$("#export-image");if(!control||!button)return;control.classList.remove("open");button.setAttribute("aria-expanded","false")}
 
+/* ===================== EXPORTAÇÕES ===================== */
+
 function exportCurrentPageImage() {
   if (!currentMetrics.fileName) return showToast("Importe um CSV antes de exportar a imagem.", true);
   closeExportMenu();setExportBusy(true);
@@ -1277,54 +1706,72 @@ function exportCurrentPageImage() {
   exportDetailPageImage(activePage.id);
 }
 
-function validateCsvFile(file){if(!file)return"Nenhum arquivo foi selecionado.";if(!/\.csv$/i.test(file.name))return"Selecione um arquivo com extensão .csv.";if(!file.size)return"O arquivo CSV está vazio.";if(file.size>200*1024*1024)return"O arquivo excede o limite local de 200 MB.";return""}
-$("#csv-input").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;$("#processing").classList.add("show");$("#processing-title").textContent="Processando CSV…";$("#processing-detail").textContent="A análise está sendo executada localmente; nenhum dado será enviado.";$("#processing-steps").innerHTML="";try{const validationError=validateCsvFile(file);if(validationError)throw new Error(validationError);const buffer=await file.arrayBuffer();const metrics=await calculateMetricsAsync(buffer,file.name);currentMetrics=metrics;render(currentMetrics);showToast(fmt(metrics.recordCount)+" registros analisados com sucesso.")}catch(error){console.error(error);showToast(error.message||"Não foi possível processar o CSV.",true)}finally{$("#processing").classList.remove("show");event.target.value=""}});
+/* ===================== EVENTOS DA INTERFACE ===================== */
 
+function validateCsvFile(file){if(!file)return"Nenhum arquivo foi selecionado.";if(!/\.csv$/i.test(file.name))return"Selecione um arquivo com extensão .csv.";if(!file.size)return"O arquivo CSV está vazio.";if(file.size>200*1024*1024)return"O arquivo excede o limite local de 200 MB.";return""}
+$("#csv-input").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;$("#processing").classList.add("show");$("#processing-title").textContent="Processando CSV…";$("#processing-detail").textContent="A análise está sendo executada localmente; nenhum dado será enviado.";$("#processing-steps").innerHTML="";try{const validationError=validateCsvFile(file);if(validationError)throw new Error(validationError);const buffer=await file.arrayBuffer();const metrics=await calculateMetricsAsync(buffer,file.name);currentMetrics=metrics;render(currentMetrics);resetGembaAbs();showToast(fmt(metrics.recordCount)+" registros analisados com sucesso.")}catch(error){console.error(error);showToast(error.message||"Não foi possível processar o CSV.",true)}finally{$("#processing").classList.remove("show");event.target.value=""}});
+
+$("#copy-summary").addEventListener("click", copyOverviewSummary);
 $("#export-summary").addEventListener("click", exportSummary);
 $("#export-image").addEventListener("click",event=>{event.stopPropagation();const control=$("#export-control"),open=control.classList.toggle("open");$("#export-image").setAttribute("aria-expanded",String(open))});
 $("#export-current-page").addEventListener("click",exportCurrentPageImage);
 $("#export-dashboard").addEventListener("click",()=>{if(!currentMetrics.fileName)return showToast("Importe um CSV antes de exportar a imagem.",true);closeExportMenu();setExportBusy(true);exportDashboardImage()});
 $("#export-menu").addEventListener("click",event=>event.stopPropagation());
 document.addEventListener("click",closeExportMenu);
-document.querySelectorAll(".sla-kpi").forEach(card => card.addEventListener("click", () => {
-  slaUi.status = card.dataset.slaStatus === "all" ? "" : card.dataset.slaStatus;
-  $("#sla-filter").value = slaUi.status; renderSlaCentral(false);
-}));
-let slaSearchTimer = 0;
-["#sla-search","#sla-group","#sla-carrier","#sla-wave","#sla-load","#sla-order-status","#sla-service","#sla-series","#sla-filter","#sla-date","#sla-shift"].forEach(selector => {
-  $(selector).addEventListener(selector === "#sla-search" ? "input" : "change", () => {
-    if (selector === "#sla-filter") slaUi.status = $(selector).value;
-    if (selector !== "#sla-search") return renderSlaCentral(false);
-    clearTimeout(slaSearchTimer);
-    slaSearchTimer = setTimeout(() => renderSlaCentral(false), 180);
-  });
+$("#sla-central-import").addEventListener("click",()=>$("#csv-input").click());
+$("#page-faturamento").addEventListener("click",event=>{
+  const toggle=event.target.closest("[data-sla-toggle-area]");if(toggle){const area=toggle.dataset.slaToggleArea,date=toggle.dataset.slaToggleDate,expanded=slaCentralUi.expanded[area];if(expanded.has(date))expanded.delete(date);else expanded.add(date);renderSlaCentral();return}
+  const button=event.target.closest("[data-sla-context]");if(!button||!button.dataset.slaContext)return;const context=slaCentralUi.contexts.get(button.dataset.slaContext);if(context)openSlaCentralDrawer(context.records,context.title);
 });
-$("#sla-clear").addEventListener("click", () => {
-  $("#sla-search").value=""; ["#sla-carrier","#sla-wave","#sla-load","#sla-order-status","#sla-service","#sla-series","#sla-filter","#sla-date","#sla-shift"].forEach(selector=>$(selector).value="");
-  slaUi.status=""; renderSlaCentral(false);
+$("#sla-drawer-body").addEventListener("input",event=>{if(slaCentralUi.drawerOpen&&event.target.matches("#sla-detail-search,#sla-detail-date"))renderSlaCentralDrawerResults()});
+$("#sla-drawer-body").addEventListener("change",event=>{if(slaCentralUi.drawerOpen&&event.target.matches("#sla-detail-hour,#sla-detail-status,#sla-detail-service,#sla-detail-delay"))renderSlaCentralDrawerResults()});
+$("#sla-drawer-body").addEventListener("click",event=>{
+  if(slaCentralUi.drawerOpen){if(event.target.closest("#sla-detail-export"))return exportSlaCentralDetailCsv();if(event.target.closest("#sla-detail-more")){slaCentralUi.drawerLimit+=200;return renderSlaCentralDrawerResults()}return}
+  const more=event.target.closest("#sla-drawer-more");if(more){slaUi.drawerPage++;return renderSlaDrawerPage()}const button=event.target.closest("[data-sla-record-index]");if(button)showSlaRecord(Number(button.dataset.slaRecordIndex));
 });
-$("#war-mode").addEventListener("click", () => {
-  slaUi.war=!slaUi.war; $("#page-faturamento").classList.toggle("war-mode",slaUi.war); $("#war-mode").classList.toggle("active",slaUi.war);
-  $("#war-mode").textContent=slaUi.war?"✕ Encerrar Modo Guerra":"⚡ Modo Guerra"; renderSlaCentral(false);
-});
-$("#sla-groups").addEventListener("click",event=>{const button=event.target.closest("[data-sla-group-index]");if(button){const group=slaUi.visibleGroups[Number(button.dataset.slaGroupIndex)];openSlaDrawer(group.items,group.name)}});
-$("#sla-priorities").addEventListener("click",event=>{const button=event.target.closest("[data-sla-priority-index]");if(button){const group=slaUi.priorityGroups[Number(button.dataset.slaPriorityIndex)];openSlaDrawer(group.items,group.load+" · "+carrierShort(group.carrier))}});
-$("#sla-drawer-body").addEventListener("click",event=>{const more=event.target.closest("#sla-drawer-more");if(more){slaUi.drawerPage++;return renderSlaDrawerPage()}const button=event.target.closest("[data-sla-record-index]");if(button)showSlaRecord(Number(button.dataset.slaRecordIndex))});
-$("#sla-drawer-close").addEventListener("click",closeSlaDrawer); $("#sla-drawer-backdrop").addEventListener("click",()=>{closeSlaDrawer();if(typeof closeIoSettings==="function")closeIoSettings()});
-document.addEventListener("keydown",event=>{if(event.key==="Escape"){closeSlaDrawer();closeExportMenu();if(typeof closeIoSettings==="function")closeIoSettings()}});
-setInterval(()=>{if(!currentMetrics.fileName||document.hidden)return;const page=document.querySelector(".page.active")?.id;if(page==="page-faturamento"&&currentMetrics.slaRecords.length)renderSlaCentral(false);else if(page==="page-io")renderIo(currentMetrics);else if(page==="page-transportadoras")renderPickupDashboard()},60000);
-renderProfileChecks();populateProfileCarriers();renderSlaProfileList();clearProfileForm();
-const ioInputs={metaB2c:"#io-meta-b2c",metaB2b:"#io-meta-b2b",rateSepB2c:"#io-rate-sep-b2c",rateFatB2c:"#io-rate-fat-b2c",rateSepB2b:"#io-rate-sep-b2b",rateFatB2b:"#io-rate-fat-b2b",teamSepB2c:"#io-team-sep-b2c",teamFatB2c:"#io-team-fat-b2c",teamSepB2b:"#io-team-sep-b2b",teamFatB2b:"#io-team-fat-b2b"};
-function closeIoSettings(){$("#io-settings").classList.remove("show");$("#sla-drawer-backdrop").classList.remove("show")}
-$("#io-open-settings").addEventListener("click",()=>{Object.entries(ioInputs).forEach(([key,selector])=>$(selector).value=ioConfig[key]);$("#io-settings").classList.add("show");$("#sla-drawer-backdrop").classList.add("show")});
-$("#io-settings-close").addEventListener("click",closeIoSettings);$("#io-settings-cancel").addEventListener("click",closeIoSettings);
-$("#io-settings-save").addEventListener("click",()=>{Object.entries(ioInputs).forEach(([key,selector])=>ioConfig[key]=Math.max(0,Number($(selector).value)||0));saveIoConfig();renderIo(currentMetrics);closeIoSettings();showToast("Configuração da I.O. salva e projeções recalculadas.")});
+$("#sla-drawer-close").addEventListener("click",closeSlaDrawer); $("#sla-drawer-backdrop").addEventListener("click",closeSlaDrawer);
+document.addEventListener("keydown",event=>{if(event.key==="Escape"){closeSlaDrawer();closeExportMenu();closeGembaAbs()}});
+setInterval(()=>{if(!currentMetrics.fileName||document.hidden)return;const page=document.querySelector(".page.active")?.id;if(page==="page-faturamento")renderSlaCentral();else if(page==="page-transportadoras")renderPickupDashboard()},60000);
+populateProfileCarriers();renderSlaProfileList();clearProfileForm();
+$("#gemba-import").addEventListener("click",()=>$("#csv-input").click());
+$("#gemba-copy").addEventListener("click",copyGemba);
+$("#gemba-goals-form").addEventListener("submit",event=>{event.preventDefault();if(!cloudState.isManager)return showToast("Somente Gestor ou Administrador pode alterar as metas.",true);gembaConfig={metaB2c:nonNegativeNumber($("#gemba-meta-b2c").value),metaB2b:nonNegativeNumber($("#gemba-meta-b2b").value)};saveGembaConfig();renderGemba(currentMetrics);showToast("Metas do GEMBA salvas e forecast recalculado.")});
+$("#gemba-add-abs").addEventListener("click",()=>openGembaAbs());
+$("#gemba-abs-close").addEventListener("click",closeGembaAbs);$("#gemba-abs-cancel").addEventListener("click",closeGembaAbs);
+$("#gemba-abs-modal").addEventListener("click",event=>{if(event.target===$("#gemba-abs-modal"))closeGembaAbs()});
+$("#gemba-abs-form").addEventListener("submit",event=>{event.preventDefault();const id=$("#gemba-abs-id").value,name=$("#gemba-abs-name").value.trim(),type=$("#gemba-abs-type").value;if(!name||!GEMBA_ABS_TYPES.includes(type)){$("#gemba-abs-error").textContent="Informe o nome e selecione um tipo de ABS válido.";return}const item={id:id||("gemba_"+Date.now()+"_"+Math.random().toString(36).slice(2,8)),nome:name,tipo:type},index=gembaAbs.findIndex(entry=>entry.id===id);if(index>=0)gembaAbs[index]=item;else gembaAbs.push(item);saveGembaAbs();closeGembaAbs();showToast(index>=0?"ABS atualizado.":"ABS adicionado.")});
+$("#gemba-abs-list").addEventListener("click",event=>{const button=event.target.closest("[data-gemba-abs-action]");if(!button)return;const item=gembaAbs.find(entry=>entry.id===button.dataset.gembaAbsId);if(!item)return;if(button.dataset.gembaAbsAction==="edit")return openGembaAbs(item);if(button.dataset.gembaAbsAction==="delete"&&confirm('Excluir o ABS de "'+item.nome+'"?')){gembaAbs=gembaAbs.filter(entry=>entry.id!==item.id);saveGembaAbs();showToast("ABS excluído.")}});
 $("#pickup-carrier").addEventListener("change",event=>loadPickupForm(event.target.value));
 $("#pickup-clear-form").addEventListener("click",()=>{$("#pickup-carrier").value="";loadPickupForm("")});
-$("#pickup-save").addEventListener("click",()=>{const carrier=$("#pickup-carrier").value;if(!carrier)return showToast("Selecione uma transportadora do CSV.",true);const schedule={};document.querySelectorAll("[data-pickup-day]").forEach(input=>schedule[input.dataset.pickupDay]=validPickupTimes(input.value));if(!Object.values(schedule).some(times=>times.length))return showToast("Informe pelo menos um dia e horário de coleta.",true);pickupSchedules[carrier]=schedule;savePickupSchedules();renderPickupSavedList();renderPickupDashboard();renderSlaCentral(false);renderIo(currentMetrics);showToast("Grade de coleta salva para "+carrier+".")});
-$("#pickup-saved-list").addEventListener("click",event=>{const button=event.target.closest("[data-delete-pickup]");if(!button)return;delete pickupSchedules[button.dataset.deletePickup];savePickupSchedules();renderPickupSavedList();renderPickupDashboard();renderSlaCentral(false);renderIo(currentMetrics);showToast("Grade de coleta removida.")});
-$("#sla-profile-type").addEventListener("change",updateProfileRuleFields);$("#sla-profile-form").addEventListener("input",updateProfileSummary);$("#sla-profile-new").addEventListener("click",clearProfileForm);$("#sla-profile-cancel").addEventListener("click",clearProfileForm);
-$("#sla-profile-form").addEventListener("submit",event=>{event.preventDefault();const profile=profileFromForm(),match=profile.match,carrierConfigured=match.allCarriers||match.carriers.length>0,serviceConfigured=match.allServices||match.services.length>0;if(!profile.name)return showToast("Informe o nome do perfil.",true);if(match.mode==="carrier"&&!carrierConfigured)return showToast("Selecione ao menos uma transportadora ou marque todas.",true);if(match.mode==="service"&&!serviceConfigured)return showToast("Selecione ao menos um Serviço da Transportadora ou marque todos.",true);if(match.mode==="both"&&(!carrierConfigured||!serviceConfigured))return showToast("Para validar por Transportadora e Serviço, configure os dois campos.",true);if(match.mode==="either"&&!carrierConfigured&&!serviceConfigured)return showToast("Configure ao menos uma transportadora ou um serviço.",true);if(!profile.match.series.length||!profile.match.statuses.length)return showToast("Selecione ao menos uma série e um status.",true);if(!profile.calendar.businessDays.length&&["same_day","next_business_day","custom"].includes(profile.rule.type))return showToast("Selecione ao menos um dia útil.",true);const existing=slaProfiles.find(item=>item.id===profile.id);if(existing)profile.createdAt=existing.createdAt||profile.createdAt;const index=slaProfiles.findIndex(item=>item.id===profile.id);if(index>=0)slaProfiles[index]=profile;else slaProfiles.push(profile);saveSlaProfiles();refreshSlaConsumers();clearProfileForm();showToast("Perfil de SLA salvo e aplicado em todo o sistema.")});
+$("#pickup-save").addEventListener("click",()=>{const carrier=$("#pickup-carrier").value;if(!carrier)return showToast("Selecione uma transportadora do CSV.",true);const schedule={};document.querySelectorAll("[data-pickup-day]").forEach(input=>schedule[input.dataset.pickupDay]=validPickupTimes(input.value));if(!Object.values(schedule).some(times=>times.length))return showToast("Informe pelo menos um dia e horário de coleta.",true);pickupSchedules[carrier]=schedule;savePickupSchedules();renderPickupSavedList();renderPickupDashboard();renderSlaCentral(false);showToast("Grade de coleta salva para "+carrier+".")});
+$("#pickup-saved-list").addEventListener("click",event=>{const button=event.target.closest("[data-delete-pickup]");if(!button)return;delete pickupSchedules[button.dataset.deletePickup];savePickupSchedules();renderPickupSavedList();renderPickupDashboard();renderSlaCentral(false);showToast("Grade de coleta removida.")});
+$("#sla-profile-form").addEventListener("input",updateProfileSummary);$("#sla-profile-form").addEventListener("change",updateProfileSummary);$("#sla-profile-new").addEventListener("click",clearProfileForm);$("#sla-profile-cancel").addEventListener("click",clearProfileForm);
+// No mesmo dia, a expedição precisa ocorrer depois do corte; em D+1 qualquer horário é válido.
+$("#sla-profile-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  const profile=profileFromForm();
+  const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  const minutes=value=>{const[hour,minute]=value.split(":").map(Number);return hour*60+minute};
+
+  if(!profile.name)return showToast("Informe o nome do perfil.",true);
+  if(!profile.services.length)return showToast("Selecione ao menos um Serviço da Transportadora.",true);
+  if(!validTime(profile.cutoff))return showToast("Informe um limite de importação válido.",true);
+  if(!validTime(profile.deadlineTime))return showToast("Informe um limite de expedição válido.",true);
+  if(profile.dispatchDay==="same_day"&&minutes(profile.deadlineTime)<=minutes(profile.cutoff)){
+    return showToast("Para expedição no mesmo dia, o limite de expedição deve ser posterior ao limite de importação.",true);
+  }
+
+  const existing=slaProfiles.find(item=>item.id===profile.id);
+  if(existing)profile.createdAt=existing.createdAt||profile.createdAt;
+  const index=slaProfiles.findIndex(item=>item.id===profile.id);
+  if(index>=0)slaProfiles[index]=profile;
+  else slaProfiles.push(profile);
+
+  saveSlaProfiles();
+  refreshSlaConsumers();
+  clearProfileForm();
+  showToast("Perfil salvo. Limites aplicados em Expedição Pedidos.");
+});
 $("#sla-profile-list").addEventListener("click",event=>{const button=event.target.closest("[data-profile-action]");if(!button)return;const profile=slaProfiles.find(item=>item.id===button.dataset.profileId);if(!profile)return;if(button.dataset.profileAction==="edit")return editSlaProfile(profile);if(button.dataset.profileAction==="duplicate"){const copy=JSON.parse(JSON.stringify(profile));copy.id="sla_"+Date.now()+"_"+Math.random().toString(36).slice(2,7);copy.name=profile.name+" · cópia";copy.createdAt=new Date().toISOString();slaProfiles.push(copy);saveSlaProfiles();refreshSlaConsumers();return showToast("Perfil duplicado.")}if(button.dataset.profileAction==="delete"){if(!confirm('Excluir o perfil "'+profile.name+'"? Pedidos associados ficarão sem SLA configurado.'))return;slaProfiles=slaProfiles.filter(item=>item.id!==profile.id);saveSlaProfiles();refreshSlaConsumers();clearProfileForm();showToast("Perfil excluído.")}});
 document.querySelectorAll("[data-export-page]").forEach(button=>button.addEventListener("click",exportCurrentPageImage));
 $("#pickup-go-settings").addEventListener("click",()=>{const button=document.querySelector('.nav-item[data-page="configuracoes"]');if(button)button.click()});
@@ -1339,20 +1786,32 @@ window.addEventListener("resize", () => {
     $("#b2b-table").innerHTML = pendingMatrixHtml(currentMetrics.b2bHourly, true);
   }, 120);
 });
-document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => {
-  const page = button.dataset.page;
-  if(["io","configuracoes","sla-profiles"].includes(page)&&!cloudState.isManager){showToast("Entre como gestor para acessar esta área.",true);showAuthModal();return}
+/* ===================== NAVEGAÇÃO E INICIALIZAÇÃO ===================== */
+
+// Páginas administrativas continuam protegidas mesmo quando acessadas diretamente pelo hash.
+function requiredRoleForPage(page){if(["configuracoes","sla-profiles"].includes(page))return"manager";return"operation"}
+function navigateToPage(page,options={}){
+  const required=requiredRoleForPage(page);
+  if(!hasAccess(required)){showToast("Entre como Gestor ou Administrador para acessar esta área.",true);showAuthModal();return false}
+  const button=document.querySelector('.nav-item[data-page="'+CSS.escape(page)+'"]'),target=$("#page-"+page);
+  if(!target)return false;
   document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
   document.querySelectorAll(".page").forEach(item => item.classList.remove("active"));
-  button.classList.add("active");
-  $("#page-" + page).classList.add("active");
-  const title = button.childNodes[1].textContent.trim();
+  if(button)button.classList.add("active");
+  target.classList.add("active");
+  const title = button?button.textContent.replace(/\s+/g," ").trim():page;
   $("#page-title").textContent = title;
   $("#breadcrumb").textContent = title.toUpperCase();
   if($("#export-current-label"))$("#export-current-label").textContent=title;
   $("#sidebar").classList.remove("open");
   $("#scrim").classList.remove("show");
-}));
+  const hash="#/"+page;if(options.replaceHash)history.replaceState(null,"",hash);else if(location.hash!==hash)history.pushState(null,"",hash);
+  return true
+}
+ensureUnifiedNavigation();
+$("#sidebar").addEventListener("click",event=>{const button=event.target.closest(".nav-item[data-page]");if(button)navigateToPage(button.dataset.page)});
+function restoreRoute(){const page=location.hash.replace(/^#\/?/,"")||"dashboard";if(!navigateToPage(page,{replaceHash:true}))navigateToPage("dashboard",{replaceHash:true})}
+window.addEventListener("hashchange",restoreRoute);
 $("#menu").addEventListener("click", () => {
   $("#sidebar").classList.add("open"); $("#scrim").classList.add("show");
 });
@@ -1374,8 +1833,8 @@ const now = new Date();
 $("#current-date").textContent = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "").toUpperCase();
 render(currentMetrics);
 createAccessGateway();
-$("#access-button").addEventListener("click",()=>cloudState.isManager?showAuthModal():showAccessGateway());$("#auth-close").addEventListener("click",closeAuthModal);$("#operation-mode").addEventListener("click",enterOperationMode);$("#auth-backdrop").addEventListener("click",event=>{if(event.target===$("#auth-backdrop"))closeAuthModal()});
-$("#manager-login-form").addEventListener("submit",async event=>{event.preventDefault();if(!cloudState.client){$("#auth-error").textContent="O Supabase ainda não foi configurado neste arquivo.";return}const email=$("#manager-email").value.trim(),password=$("#manager-password").value;$("#auth-error").textContent="Autenticando…";const {data,error}=await cloudState.client.auth.signInWithPassword({email,password});if(error){$("#auth-error").textContent="E-mail ou senha inválidos.";return}const allowed=await verifyManager(data.user);if(!allowed){await cloudState.client.auth.signOut();$("#auth-error").textContent="Este usuário não possui perfil de gestor ativo.";return}cloudState.user=data.user;cloudState.isManager=true;await pullCloudSettings(false);enterManagerMode();showToast("Acesso de gestor liberado · edição habilitada.")});
-$("#manager-logout").addEventListener("click",async()=>{if(cloudState.client)await cloudState.client.auth.signOut();cloudState.user=null;cloudState.isManager=false;sessionStorage.removeItem("luft-access-mode");applyAccessMode();hideAuthModal();showAccessGateway();showToast("Sessão de gestor encerrada.")});
+$("#access-button").addEventListener("click",()=>hasAccess("leader")?showAuthModal():showAccessGateway());$("#auth-close").addEventListener("click",closeAuthModal);$("#operation-mode").addEventListener("click",enterOperationMode);$("#auth-backdrop").addEventListener("click",event=>{if(event.target===$("#auth-backdrop"))closeAuthModal()});
+$("#manager-login-form").addEventListener("submit",async event=>{event.preventDefault();if(!cloudState.client){$("#auth-error").textContent="O Supabase ainda não foi configurado neste arquivo.";return}const email=$("#manager-email").value.trim(),password=$("#manager-password").value;$("#auth-error").textContent="Autenticando…";const {data,error}=await cloudState.client.auth.signInWithPassword({email,password});if(error){$("#auth-error").textContent="E-mail ou senha inválidos.";return}const role=await verifyAccessProfile(data.user);if(accessLevel(role)<accessLevel("leader")){await cloudState.client.auth.signOut();$("#auth-error").textContent="Este usuário não possui perfil de acesso ativo.";return}cloudState.user=data.user;cloudState.role=role;cloudState.isManager=hasAccess("manager");if(cloudState.isManager)await pullCloudSettings(false);enterManagerMode();showToast("Acesso "+role+" liberado.")});
+$("#manager-logout").addEventListener("click",async()=>{if(cloudState.client)await cloudState.client.auth.signOut();cloudState.user=null;cloudState.role="operation";cloudState.isManager=false;sessionStorage.removeItem("luft-access-mode");applyAccessMode();hideAuthModal();showAccessGateway();showToast("Sessão autenticada encerrada.")});
 document.addEventListener("click",event=>{if(event.target?.id==="database-sync")syncAllSettings()});
-initializeSupabase();
+initializeSupabase().then(restoreRoute).catch(error=>{console.error(error);showToast("Falha ao inicializar o controle de acesso.",true)});
