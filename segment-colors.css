@@ -1,0 +1,9 @@
+:root{--b2c:#3b82f6;--b2b:#14b8a6}
+[data-delivery=b2c]{--delivery-color:var(--b2c)}
+[data-delivery=b2b]{--delivery-color:var(--b2b)}
+:is(h2,h3,th,td,small,strong,span,label)[data-delivery]{color:var(--delivery-color)!important}
+:is(.prod-segments article,.shipping-grid article)[data-delivery]{border-top:4px solid var(--delivery-color)}
+:is(.gemba-flow-item,.gemba-forecast-item)[data-delivery]{--tone:var(--delivery-color)!important}
+.prod-legend-b2c,.prod-turn-channel.b2c strong,.ex-type.consumer{color:var(--b2c)!important}
+.prod-legend-b2b,.prod-turn-channel.b2b strong,.ex-type:not(.consumer){color:var(--b2b)!important}
+.prod-bar.b2c{background:var(--b2c)}.prod-bar.b2b{background:var(--b2b)}

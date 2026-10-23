@@ -1,0 +1,12 @@
+LUFT - Status Operacional Lite
+
+1. Extraia este ZIP. Todos os arquivos ficam na mesma pasta.
+2. Envie TODOS os arquivos diretamente para a raiz do repositorio GitHub.
+3. Em Settings > Pages: Deploy from a branch > main > / (root) > Save.
+4. Abra a URL exibida pelo GitHub Pages apos concluir a publicacao.
+
+A pagina inicial e index.html. Nao e necessario instalar ou compilar.
+Dados e configuracoes ficam apenas no navegador, sem banco externo.
+Cada dominio/navegador tem sua propria base. Reimporte o CSV ao mudar de endereco.
+Logos oficiais locais: Jadlog, FedEx, DHL, Correios, SPX, Patrus e Loggi/L4B.
+Creditos e URLs de origem: FONTES-LOGOS.json.
