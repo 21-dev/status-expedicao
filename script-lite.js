@@ -56,7 +56,7 @@ async function applyCloudSettings(rows){const map=Object.fromEntries((rows||[]).
 async function pullCloudSettings(showMessage){if(!cloudState.client)return false;cloudState.syncing=true;updateDatabaseStatus("Sincronizando…","Buscando as configurações operacionais do banco.");const {data,error}=await cloudState.client.from("system_settings").select("setting_key,payload,updated_at");cloudState.syncing=false;if(error){updateDatabaseStatus("Falha na sincronização",error.message);if(showMessage)showToast("Não foi possível sincronizar com o banco.",true);return false}await applyCloudSettings(data);cloudState.lastSync=new Date();updateDatabaseStatus("Banco conectado","Última sincronização às "+cloudState.lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));if(showMessage)showToast("Configurações sincronizadas com o Supabase.");return true}
 async function pushCloudSetting(key,payload){if(!cloudState.client||!cloudState.isManager)return false;const {error}=await cloudState.client.from("system_settings").upsert({setting_key:key,payload,updated_by:cloudState.user.id},{onConflict:"setting_key"});if(error){showToast("Alteração salva localmente, mas não sincronizada: "+error.message,true);return false}cloudState.lastSync=new Date();updateDatabaseStatus("Banco conectado","Alteração sincronizada às "+cloudState.lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));return true}
 async function syncAllSettings(){if(!cloudState.client)return showToast("Configure o Supabase antes de sincronizar.",true);if(!cloudState.isManager)return pullCloudSettings(true);updateDatabaseStatus("Sincronizando…","Enviando as configurações locais e conferindo o banco.");const rows=[{setting_key:"sla_profiles",payload:slaProfiles,updated_by:cloudState.user.id},{setting_key:"pickup_schedules",payload:pickupSchedules,updated_by:cloudState.user.id},{setting_key:"gemba_config",payload:gembaConfig,updated_by:cloudState.user.id}];const {error}=await cloudState.client.from("system_settings").upsert(rows,{onConflict:"setting_key"});if(error){updateDatabaseStatus("Falha na sincronização",error.message);return showToast("Não foi possível sincronizar as configurações.",true)}await pullCloudSettings(false);showToast("Todas as configurações foram sincronizadas.")}
-async function initializeSupabase(){ensureDatabaseStatusUi();cloudState.client=null;updateDatabaseStatus("Dados neste navegador","Base e configura\u00e7\u00f5es salvas apenas neste navegador.");applyAccessMode();enterOperationMode();try{const saved=await window.BrowserData.read();if(saved?.fileName){currentMetrics=saved;render(currentMetrics)}}catch(error){console.error(error);showToast("N\u00e3o foi poss\u00edvel restaurar a base local.",true)}}
+async function initializeSupabase(){ensureDatabaseStatusUi();cloudState.client=null;updateDatabaseStatus("Dados neste navegador","Base e configura\u00e7\u00f5es salvas apenas neste navegador.");applyAccessMode();enterOperationMode();try{const saved=await window.BrowserData.read();if(saved?.fileName&&!currentMetrics.fileName){currentMetrics=saved;render(currentMetrics)}}catch(error){console.error(error);showToast("N\u00e3o foi poss\u00edvel restaurar a base local.",true)}}
 
 /* ===================== ESTADO OPERACIONAL E PERSISTÊNCIA ===================== */
 
@@ -341,6 +341,8 @@ function calculateMetrics(csvText, fileName, onProgress) {
     metrics.receivedRows++;
     if (!order) { metrics.rejectedRows++; return; }
     const series = (values[indexes.series] || "").trim();
+    const classification = indexes.orderClassification >= 0 ? values[indexes.orderClassification] || "" : "";
+    const isB2c = ["venda omn channel", "alom-spasa-venda funcion.", "spasa-rem amc"].includes(normalizeHeader(classification).replace(/\s+/g, " "));
     const status = normalizeHeader(values[indexes.status] || "").toUpperCase();
     const processedAt = (values[indexes.processedAt] || "").trim();
     const productsRaw=String(values[indexes.products]||"").trim(),volumesRaw=String(values[indexes.volumes]||"").trim();
@@ -351,12 +353,14 @@ function calculateMetrics(csvText, fileName, onProgress) {
     const carrier = (values[indexes.carrier] || "").trim();
     const load = (values[indexes.load] || "").trim();
     const weighedAt = (values[indexes.weighedAt] || "").trim();
+    const conferenceAt = indexes.conferenceAt >= 0 ? (values[indexes.conferenceAt] || "").trim() : "";
     const isBillingStatus = billingStatuses.has(status);
     const isBreakStatus = status.startsWith("AG") && status.includes("RESOLUCAO") && status.includes("QUEBRA");
     const isTriagedStatus = triagedStatuses.has(status) || isBreakStatus;
     const isWithoutPdfStatus = withoutPdfStatuses.has(status) || isBreakStatus;
     const isFedex = normalizeHeader(carrier).includes("fedex");
     const isFlBrasil = normalizeHeader(carrier).includes("fl brasil");
+    const isPinCarrier = isFlBrasil || /\bmanaus\b/.test(normalizeHeader(carrier));
 
     const isProcessed = (values[indexes.processed] || "").trim() === "1";
     const cancelledAt = indexes.cancelledAt >= 0 ? (values[indexes.cancelledAt] || "").trim() : "";
@@ -364,7 +368,7 @@ function calculateMetrics(csvText, fileName, onProgress) {
     if (!isCancelled) {
       const gembaImportedRaw = (indexes.imported >= 0 ? values[indexes.imported] : "") || (indexes.registered >= 0 ? values[indexes.registered] : "");
       const gembaImportedAt = parseBrazilianDateTime(gembaImportedRaw);
-      const gembaSegment = series === "17" ? "b2c" : (["", "11", "14"].includes(series) ? "b2b" : null);
+      const gembaSegment = isB2c ? "b2c" : "b2b";
       metrics.gembaOrders.push({
         service:indexes.service>=0?(values[indexes.service]||"").trim():"", marketplace:indexes.marketplace>=0?(values[indexes.marketplace]||"").trim():"", registeredStamp:parseBrazilianDateTime(values[indexes.registered])?.getTime()||0, actualImportedStamp:parseBrazilianDateTime(values[indexes.imported])?.getTime()||0,
         invoice:indexes.invoice>=0?(values[indexes.invoice]||"").trim():"", client:indexes.client>=0?(values[indexes.client]||"").trim():"", volumes,
@@ -373,7 +377,7 @@ function calculateMetrics(csvText, fileName, onProgress) {
         order, segment:gembaSegment||"other", series:series || "Vazia", wave:indexes.wave >= 0 ? (values[indexes.wave] || "").trim() : "",
         waveId:indexes.waveId >= 0 ? (values[indexes.waveId] || "").trim() : "", status:(values[indexes.status] || "").trim(),
         products, skus:indexes.skuQty >= 0 ? Number(String(values[indexes.skuQty] || "0").replace(",",".")) || 0 : 0,
-        separatedAt:indexes.separatedAt >= 0 ? (values[indexes.separatedAt] || "").trim() : "", billedAt:indexes.billedAt >= 0 ? (values[indexes.billedAt] || "").trim() : "", weighedAt,
+        separatedAt:indexes.separatedAt >= 0 ? (values[indexes.separatedAt] || "").trim() : "", billedAt:indexes.billedAt >= 0 ? (values[indexes.billedAt] || "").trim() : "", weighedAt, conferenceAt, conferenceStamp:parseBrazilianDateTime(conferenceAt)?.getTime()||0,
         conferenceStarted:indexes.conferenceStarted >= 0 ? (values[indexes.conferenceStarted] || "").trim() === "1" : false,
         processedAt, processed:isProcessed, importedStamp:gembaImportedAt ? gembaImportedAt.getTime() : 0, carrier, load,
         orderClassification:indexes.orderClassification>=0?(values[indexes.orderClassification]||"").trim():""
@@ -430,7 +434,7 @@ function calculateMetrics(csvText, fileName, onProgress) {
       seen.withoutPdf.add(order); addSummary(metrics.withoutPdfSummary, seen.withoutPdfSummary, order, products, volumes);
     }
     const uf = (values[indexes.uf] || "").trim().toUpperCase();
-    if (isBillingStatus && pinStates.has(uf) && isFlBrasil) {
+    if (isBillingStatus && pinStates.has(uf) && isPinCarrier) {
       if (!seen.pin.has(order)) {
         seen.pin.add(order);
         const detail={ order, uf, series:series || "Vazia", status:(values[indexes.status] || "").trim() || "Não informado", load: load || "Sem carga" };metrics.pinDetails.push(detail);pinDetailByOrder.set(order,detail);
@@ -454,10 +458,10 @@ function calculateMetrics(csvText, fileName, onProgress) {
       }
     }
 
-    const productivityMatch = weighedAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
+    const productivityMatch = conferenceAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
     if (productivityMatch) {
       const hour = Number(productivityMatch[4]);
-      const segment = series === "17" ? "b2c" : (["", "11", "14"].includes(series) ? "b2b" : null);
+      const segment = isB2c ? "b2c" : "b2b";
       const shift = hour >= 6 && hour <= 14 ? "shift1" : hour >= 15 && hour <= 23 ? "shift2" : null;
       if (segment && shift) {
         const date = productivityMatch[1] + "/" + productivityMatch[2] + "/" + productivityMatch[3];
@@ -469,20 +473,20 @@ function calculateMetrics(csvText, fileName, onProgress) {
       }
     }
 
-    if (hourlyStatuses.has(status) && (values[indexes.load] || "").trim() === "" && weighedAt) {
-      const match = weighedAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
+    if (hourlyStatuses.has(status) && (values[indexes.load] || "").trim() === "" && conferenceAt) {
+      const match = conferenceAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
       if (match) {
         const label = match[1] + "/" + match[2] + " · " + match[4] + "h";
         const weighedUtc = Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
         const daysOld = Math.floor((todayUtc - weighedUtc) / 86400000);
-        const target = series === "17" ? b2c : (series === "14" || series === "" ? b2b : null);
+        const target = isB2c ? b2c : b2b;
         const descriptor = carrier || "Transportadora não informada";
         if (target) {
           const bucketKey = label + "||" + descriptor;
           if (!target.has(bucketKey)) target.set(bucketKey, { orders: new Map(), alert: false });
           const bucket = target.get(bucketKey);
-          if (!bucket.orders.has(order)) bucket.orders.set(order, { invoice:indexes.invoice>=0?(values[indexes.invoice]||"").trim():"", order, shipment:indexes.shipment>=0?(values[indexes.shipment]||"").trim():"", orderClassification:indexes.orderClassification>=0?(values[indexes.orderClassification]||"").trim():"", serviceCode:indexes.serviceCode>=0?(values[indexes.serviceCode]||"").trim():"", carrier:descriptor, weighedAt, weighingUser:indexes.weighingUser>=0?(values[indexes.weighingUser]||"").trim():"", volumes });
-          if ((series === "17" && daysOld >= 1) || (series !== "17" && daysOld >= 2)) bucket.alert = true;
+          if (!bucket.orders.has(order)) bucket.orders.set(order, { invoice:indexes.invoice>=0?(values[indexes.invoice]||"").trim():"", order, shipment:indexes.shipment>=0?(values[indexes.shipment]||"").trim():"", orderClassification:indexes.orderClassification>=0?(values[indexes.orderClassification]||"").trim():"", serviceCode:indexes.serviceCode>=0?(values[indexes.serviceCode]||"").trim():"", carrier:descriptor, conferenceAt, weighingUser:indexes.weighingUser>=0?(values[indexes.weighingUser]||"").trim():"", volumes });
+          if ((isB2c && daysOld >= 1) || (!isB2c && daysOld >= 2)) bucket.alert = true;
         }
       }
     }
@@ -708,7 +712,7 @@ function pendingMatrixHtml(data, showVolumes) {
   labels.forEach(label => {
     const hourLabel = dates.size === 1 ? (label.split(" · ")[1] || label) : label;
     let rowTotal = 0, rowVolumes = 0;
-    cells += '<div class="matrix-cell matrix-hour" title="Data e hora da pesagem: ' + escapeHtml(label) + '"><span>' + escapeHtml(hourLabel) + '</span></div>';
+    cells += '<div class="matrix-cell matrix-hour" title="Data e hora da conferência: ' + escapeHtml(label) + '"><span>' + escapeHtml(hourLabel) + '</span></div>';
     descriptors.forEach(descriptor => {
       const item = values.get(label + "||" + descriptor);
       const value = item ? item.orders : 0;
@@ -830,7 +834,7 @@ function productivityHtml(productivity) {
     const b2cTotal=day.b2c.shift1.products+day.b2c.shift2.products,b2bTotal=day.b2b.shift1.products+day.b2b.shift2.products;
     return '<article class="card history-card"><h3>' + day.date + '</h3><div class="history-totals"><div class="history-total"><small>Total B2C</small><strong>'+fmt(b2cTotal)+'</strong></div><div class="history-total"><small>Total B2B</small><strong>'+fmt(b2bTotal)+'</strong></div></div><div class="history-lines">' + line('B2C T1', day.b2c.shift1) + line('B2C T2', day.b2c.shift2) + line('B2B T1', day.b2b.shift1) + line('B2B T2', day.b2b.shift2) + '</div></article>';
   }).join("");
-  return '<article class="card productivity-today"><div class="productivity-head"><div><small>Produtividade do dia</small><h2>Produtos pesados por turno</h2></div><div class="productivity-date">' + today.date + '</div></div><div class="productivity-segments">' + segment('B2C', today.b2c, 'Série 17') + segment('B2B', today.b2b, 'Séries vazia, 11 e 14') + '</div></article><div class="history-grid">' + history + '</div><article class="card productivity-chart-card"><div class="card-head"><div><h2>Evolução da produção diária</h2><p>Total de produtos por dia · cada linha representa um segmento e turno</p></div></div>' + productivityWaveHtml(productivity.days) + '</article>';
+  return '<article class="card productivity-today"><div class="productivity-head"><div><small>Produtividade do dia</small><h2>Produtos conferidos por turno</h2></div><div class="productivity-date">' + today.date + '</div></div><div class="productivity-segments">' + segment('B2C', today.b2c, 'Classificações B2C') + segment('B2B', today.b2b, 'Demais classificações') + '</div></article><div class="history-grid">' + history + '</div><article class="card productivity-chart-card"><div class="card-head"><div><h2>Evolução da produção diária</h2><p>Total de produtos por dia · cada linha representa um segmento e turno</p></div></div>' + productivityWaveHtml(productivity.days) + '</article>';
 }
 
 /* ===================== GEMBA ===================== */
@@ -867,10 +871,10 @@ function loadGembaAbs(){try{const data=JSON.parse(localStorage.getItem("gemba_ab
 function saveGembaAbs(){localStorage.setItem("gemba_abs",JSON.stringify(gembaAbs));renderGembaAbs();renderGembaSummary()}
 function resetGembaAbs(){gembaAbs=[];localStorage.removeItem("gemba_abs");renderGembaAbs();renderGembaSummary()}
 
-// Produção considera a data de pesagem; registros de outras datas não entram na meta do dia.
+// Produção considera a data de conferência; registros de outras datas não entram na meta do dia.
 function calculateGembaProduction(metrics,referenceDate=new Date()){
   const today=String(referenceDate.getDate()).padStart(2,"0")+"/"+String(referenceDate.getMonth()+1).padStart(2,"0")+"/"+referenceDate.getFullYear();
-  return(metrics.gembaOrders||[]).reduce((result,item)=>{if(!String(item.weighedAt||"").startsWith(today))return result;if(item.segment==="b2c")result.b2c+=nonNegativeNumber(item.products);else if(item.segment==="b2b")result.b2b+=nonNegativeNumber(item.products);return result},{b2c:0,b2b:0});
+  return(metrics.gembaOrders||[]).reduce((result,item)=>{const producedAt=item.conferenceAt;if(!String(producedAt||"").startsWith(today))return result;if(item.segment==="b2c")result.b2c+=nonNegativeNumber(item.products);else if(item.segment==="b2b")result.b2b+=nonNegativeNumber(item.products);return result},{b2c:0,b2b:0});
 }
 
 // Compensação transfere somente o excedente real entre B2C e B2B, sem criar produção artificial.
@@ -910,7 +914,7 @@ function generateGembaSummary(metrics=currentMetrics,referenceDate=new Date()){
   return lines.join("\n")
 }
 function renderGembaSummary(){if($("#gemba-summary-preview"))$("#gemba-summary-preview").textContent=generateGembaSummary()}
-function renderGemba(metrics){const flow=calculateGembaFlow(metrics),now=new Date();$("#gemba-updated").textContent=metrics.fileName?now.toLocaleDateString("pt-BR")+" ? atualizado ?s "+metrics.importedAt:"Aguardando importa??o do CSV";$("#gemba-flow").innerHTML=renderGembaFlow(flow,Boolean(metrics.fileName));renderGembaSummary()}
+function renderGemba(metrics){const flow=calculateGembaFlow(metrics),now=new Date();$("#gemba-updated").textContent=metrics.fileName?"Última atualização: "+window.BrowserData.updatedLabel(metrics):"Aguardando importa??o do CSV";$("#gemba-flow").innerHTML=renderGembaFlow(flow,Boolean(metrics.fileName));renderGembaSummary()}
 function openGembaAbs(item){const modal=$("#gemba-abs-modal");$("#gemba-abs-id").value=item?.id||"";$("#gemba-abs-name").value=item?.nome||"";$("#gemba-abs-type").value=item?.tipo||"";$("#gemba-abs-title").textContent=item?"Editar ABS":"Adicionar ABS";$("#gemba-abs-error").textContent="";modal.removeAttribute("inert");modal.classList.add("show");modal.setAttribute("aria-hidden","false");setTimeout(()=>$("#gemba-abs-name").focus(),0)}
 function closeGembaAbs(){const modal=$("#gemba-abs-modal");modal.classList.remove("show");modal.setAttribute("aria-hidden","true");modal.setAttribute("inert","");$("#gemba-abs-form").reset();$("#gemba-abs-id").value="";$("#gemba-abs-error").textContent=""}
 async function writeClipboardText(text){if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text);const area=document.createElement("textarea");area.value=text;area.style.position="fixed";area.style.opacity="0";document.body.append(area);try{area.select();if(!document.execCommand("copy"))throw new Error("Cópia não suportada")}finally{area.remove()}}
@@ -1008,6 +1012,7 @@ function centralOperationalTable(model,group){
   return '<h3>'+group+'</h3><div class="sla-matrix-scroll"><table class="sla-central-matrix"><thead><tr><th>Regra</th>'+classes.map(c=>'<th>'+centralLabels[c]+'</th>').join('')+'<th>Fat.</th><th>Exp.</th><th>Total</th><th>Limite mais antigo</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function renderSlaCentral(){
+  if(!document.querySelector("#page-faturamento"))return;
   const metrics=currentMetrics,model=buildSlaCentralModel(metrics),fresh=slaCentralUi.metrics!==metrics;
   if(fresh||slaCentralUi.todayKey!==model.todayKey){slaCentralUi.expanded={billing:new Set([model.todayKey,model.d1Key]),shipping:new Set([model.todayKey,model.d1Key])};slaCentralUi.metrics=metrics;slaCentralUi.todayKey=model.todayKey;if(fresh&&slaCentralUi.drawerOpen)closeSlaDrawer();}
   slaCentralUi.model=model;slaCentralUi.contexts.clear();slaCentralUi.contextSequence=0;
@@ -1060,8 +1065,8 @@ function exportSlaCentralDetailCsv(){
 const conferenceUi={details:[],title:""};
 function conferenceBucketByKey(key,segment){const data=segment==="b2c"?currentMetrics.b2cHourly:currentMetrics.b2bHourly;return data.find(item=>item.label+"||"+item.descriptor===key)}
 function conferenceTotalByCarrier(carrier,segment){const data=segment==="b2c"?currentMetrics.b2cHourly:currentMetrics.b2bHourly,matching=data.filter(item=>item.descriptor===carrier),orders=new Map();matching.forEach(bucket=>bucket.details.forEach(item=>orders.set(item.order,item)));const details=Array.from(orders.values());return{label:"Todos os horários",descriptor:carrier,orders:details.length,volumes:details.reduce((sum,item)=>sum+item.volumes,0),details}}
-function openConferenceDetails(bucket,segment){if(!bucket||!bucket.details.length)return;conferenceUi.details=bucket.details.slice().sort((a,b)=>String(a.invoice).localeCompare(String(b.invoice),"pt-BR",{numeric:true}));conferenceUi.title=(segment==="b2c"?"Conferência B2C":"Conferência B2B")+" · "+bucket.label+" · "+carrierDisplayName(bucket.descriptor);$("#sla-drawer-kicker").textContent="PEDIDOS PENDENTES DE CONFERÊNCIA";$("#sla-drawer-title").textContent=conferenceUi.title;$("#sla-drawer-subtitle").textContent=fmt(conferenceUi.details.length)+" pedidos · "+fmt(bucket.volumes)+" volumes";$("#sla-drawer-body").innerHTML='<div class="drawer-export-bar"><button class="btn secondary" id="conference-export-csv">Exportar CSV</button><button class="btn primary" id="conference-export-image">Exportar imagem</button></div><div style="overflow:auto"><div class="conference-detail-table"><div class="conference-detail-head"><span>Nota Fiscal</span><span>Pedido de Venda</span><span>Classificação</span><span>Cód. Serviço</span><span>Transportadora</span><span>Pesado em</span><span>Usuário Pesagem</span><span>Volumes</span></div>'+conferenceUi.details.map(item=>'<div class="conference-detail-row"><strong>'+escapeHtml(item.invoice||"—")+'</strong><span>'+escapeHtml(item.order||"—")+'</span><span>'+escapeHtml(item.orderClassification||"—")+'</span><span>'+escapeHtml(item.serviceCode||"—")+'</span><span>'+escapeHtml(item.carrier||"—")+'</span><span>'+escapeHtml(item.weighedAt||"—")+'</span><span>'+escapeHtml(item.weighingUser||"—")+'</span><strong>'+fmt(item.volumes)+'</strong></div>').join('')+'</div></div>';$("#sla-drawer").classList.add("show");$("#sla-drawer-backdrop").classList.add("show");$("#conference-export-csv").addEventListener("click",exportConferenceCsv);$("#conference-export-image").addEventListener("click",exportConferenceImage)}
-function conferenceRows(){return [["NOTA FISCAL","PEDIDO DE VENDA","CLASSIFICAÇÃO DO PEDIDO","COD DE SERVIÇO","TRANSPORTADORA","PESADO EM","USUARIO DE PESAGEM","VOLUMES"],...conferenceUi.details.map(item=>[item.invoice,item.order,item.orderClassification,item.serviceCode,item.carrier,item.weighedAt,item.weighingUser,item.volumes])]}
+function openConferenceDetails(bucket,segment){if(!bucket||!bucket.details.length)return;conferenceUi.details=bucket.details.slice().sort((a,b)=>String(a.invoice).localeCompare(String(b.invoice),"pt-BR",{numeric:true}));conferenceUi.title=(segment==="b2c"?"Conferência B2C":"Conferência B2B")+" · "+bucket.label+" · "+carrierDisplayName(bucket.descriptor);$("#sla-drawer-kicker").textContent="PEDIDOS PENDENTES DE CONFERÊNCIA";$("#sla-drawer-title").textContent=conferenceUi.title;$("#sla-drawer-subtitle").textContent=fmt(conferenceUi.details.length)+" pedidos · "+fmt(bucket.volumes)+" volumes";$("#sla-drawer-body").innerHTML='<div class="drawer-export-bar"><button class="btn secondary" id="conference-export-csv">Exportar CSV</button><button class="btn primary" id="conference-export-image">Exportar imagem</button></div><div style="overflow:auto"><div class="conference-detail-table"><div class="conference-detail-head"><span>Nota Fiscal</span><span>Pedido de Venda</span><span>Classificação</span><span>Cód. Serviço</span><span>Transportadora</span><span>Conferido em</span><span>Usuário Pesagem</span><span>Volumes</span></div>'+conferenceUi.details.map(item=>'<div class="conference-detail-row"><strong>'+escapeHtml(item.invoice||"—")+'</strong><span>'+escapeHtml(item.order||"—")+'</span><span>'+escapeHtml(item.orderClassification||"—")+'</span><span>'+escapeHtml(item.serviceCode||"—")+'</span><span>'+escapeHtml(item.carrier||"—")+'</span><span>'+escapeHtml(item.conferenceAt||"—")+'</span><span>'+escapeHtml(item.weighingUser||"—")+'</span><strong>'+fmt(item.volumes)+'</strong></div>').join('')+'</div></div>';$("#sla-drawer").classList.add("show");$("#sla-drawer-backdrop").classList.add("show");$("#conference-export-csv").addEventListener("click",exportConferenceCsv);$("#conference-export-image").addEventListener("click",exportConferenceImage)}
+function conferenceRows(){return [["NOTA FISCAL","PEDIDO DE VENDA","CLASSIFICAÇÃO DO PEDIDO","COD DE SERVIÇO","TRANSPORTADORA","CONFERIDO EM","USUARIO DE PESAGEM","VOLUMES"],...conferenceUi.details.map(item=>[item.invoice,item.order,item.orderClassification,item.serviceCode,item.carrier,item.conferenceAt,item.weighingUser,item.volumes])]}
 function csvCell(value){const text=String(value==null?"":value);return /[;"\n]/.test(text)?'"'+text.replace(/"/g,'""')+'"':text}
 function exportConferenceCsv(){const content=conferenceRows().map(row=>row.map(csvCell).join(";")).join("\n"),blob=new Blob(["\ufeff"+content],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="pendentes-conferencia-"+new Date().toISOString().slice(0,10)+".csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast("Lista de conferência exportada em CSV.")}
 async function exportConferenceImage(){
@@ -1158,9 +1163,9 @@ function render(metrics) {
   $("#pin-table-page").innerHTML = pinHtml(metrics.pinDetails);
   window.LiteProductivity.render(metrics);
   $("#file-info").textContent = metrics.fileName
-    ? metrics.fileName + " · " + fmt(metrics.recordCount) + " registros · importado às " + metrics.importedAt
+    ? metrics.fileName + " · " + fmt(metrics.recordCount) + " registros · Última atualização: " + window.BrowserData.updatedLabel(metrics)
     : "Importe a exportação operacional para calcular os indicadores";
-  $("#footer-update").textContent = metrics.importedAt ? "Dados atualizados às " + metrics.importedAt : "Aguardando importação";
+  $("#footer-update").textContent = metrics.fileName ? "Última atualização: " + window.BrowserData.updatedLabel(metrics) : "Aguardando importação";
   $("#dispatch-carrier-card").textContent = metrics.lastDispatch ? metrics.lastDispatch.carrier : "Aguardando importação";
   $("#dispatch-time-card").textContent = metrics.lastDispatch ? metrics.lastDispatch.processedAt : "—";
   renderSlaCentral(true);
@@ -1388,7 +1393,7 @@ async function exportDetailPageImage(pageId) {
     "page-triados": "Triados por transportadora", "page-produtividade": "Produtividade", "page-gemba": "GEMBA", "page-pin": "Solicitação PIN",
     "page-conferencia-b2c": "Conferência Doca · B2C",
     "page-conferencia-b2b": "Conferência Doca · B2B",
-    "page-faturamento": "Expedição Pedidos", "page-transportadoras": "Transportadoras · Grade de coleta",
+    "page-faturamento": "SLA", "page-transportadoras": "Transportadoras · Grade de coleta",
     "page-relatorios": "Relatórios", "page-sla-profiles": "Perfis de prioridade SLA", "page-configuracoes": "Configurações"
   };
   context.fillStyle = colors.background; context.fillRect(0, 0, canvas.width, canvas.height);
@@ -1462,7 +1467,7 @@ async function exportDetailPageImage(pageId) {
       const productivityGradient=context.createLinearGradient(70,190,1730,262);productivityGradient.addColorStop(0,"#14213a");productivityGradient.addColorStop(1,"#284f87");
       rect(70,190,1660,72,productivityGradient,null,16);
       drawText("PRODUTIVIDADE DO DIA", 94, 214, 10, "#a9bad5", 900);
-      drawText("Produtos pesados por turno", 94, 244, 22, "#fff", 900);
+      drawText("Produtos conferidos por turno", 94, 244, 22, "#fff", 900);
       drawText(today.date,1705,226,14,"#fff",900,"right");
       context.strokeStyle=colors.line;context.beginPath();context.moveTo(900,278);context.lineTo(900,520);context.stroke();
       drawText("B2C", 94, 294, 16, colors.text, 900);drawText("SÉRIE 17",150,294,9,colors.muted,800);
@@ -1605,7 +1610,7 @@ async function exportDetailPageImage(pageId) {
   canvas.toBlob(blob => {
     if (!blob) { setExportBusy(false); return showToast("Não foi possível gerar a imagem.", true); }
     const url = URL.createObjectURL(blob), link = document.createElement("a");
-    const fileName=pageId==="page-faturamento"?"expedicao-pedidos":pageId.replace("page-", "");
+    const fileName=pageId==="page-faturamento"?"sla":pageId.replace("page-", "");
     link.href = url; link.download = fileName + "-luft-" + new Date().toISOString().slice(0, 10) + ".png";
     link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     setExportBusy(false);
@@ -1640,7 +1645,7 @@ function exportCurrentPageImage() {
 /* ===================== EVENTOS DA INTERFACE ===================== */
 
 function validateCsvFile(file){if(!file)return"Nenhum arquivo foi selecionado.";if(!/\.csv$/i.test(file.name))return"Selecione um arquivo com extensão .csv.";if(!file.size)return"O arquivo CSV está vazio.";if(file.size>200*1024*1024)return"O arquivo excede o limite local de 200 MB.";return""}
-$("#csv-input").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;$("#processing").classList.add("show");$("#processing-title").textContent="Processando CSV…";$("#processing-detail").textContent="A análise está sendo executada localmente; nenhum dado será enviado.";$("#processing-steps").innerHTML="";try{const validationError=validateCsvFile(file);if(validationError)throw new Error(validationError);const buffer=await file.arrayBuffer();const controller=new AbortController(),cancel=document.createElement("button");cancel.className="btn secondary";cancel.textContent="Cancelar importação";cancel.addEventListener("click",()=>controller.abort());$("#processing-steps").append(cancel);const metrics=await calculateMetricsAsync(buffer,file.name,{signal:controller.signal,onProgress:rows=>{$("#processing-detail").textContent=fmt(rows)+" linhas processadas · dados anteriores preservados até concluir"}});currentMetrics=metrics;render(currentMetrics);try{await window.BrowserData.write(metrics)}catch(storageError){console.error(storageError);showToast("Base carregada, mas n\u00e3o foi poss\u00edvel salvar neste navegador.",true)}resetGembaAbs();showToast(fmt(metrics.recordCount)+" registros analisados com sucesso.")}catch(error){console.error(error);showToast(error.message||"Não foi possível processar o CSV.",true)}finally{$("#processing").classList.remove("show");event.target.value=""}});
+$("#csv-input").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;$("#processing").classList.add("show");$("#processing-title").textContent="Processando CSV…";$("#processing-detail").textContent="A análise está sendo executada localmente; nenhum dado será enviado.";$("#processing-steps").innerHTML="";try{const validationError=validateCsvFile(file);if(validationError)throw new Error(validationError);const buffer=await file.arrayBuffer();const controller=new AbortController(),cancel=document.createElement("button");cancel.className="btn secondary";cancel.textContent="Cancelar importação";cancel.addEventListener("click",()=>controller.abort());$("#processing-steps").append(cancel);const metrics=await calculateMetricsAsync(buffer,file.name,{signal:controller.signal,onProgress:rows=>{$("#processing-detail").textContent=fmt(rows)+" linhas processadas · dados anteriores preservados até concluir"}});try{await window.BrowserData.write(metrics)}catch(storageError){console.error(storageError);throw new Error("Não foi possível salvar a nova base neste navegador. Os dados anteriores foram mantidos; tente importar novamente.")}currentMetrics=metrics;render(currentMetrics);resetGembaAbs();showToast(fmt(metrics.recordCount)+" registros analisados com sucesso.")}catch(error){console.error(error);showToast(error.message||"Não foi possível processar o CSV.",true)}finally{$("#processing").classList.remove("show");event.target.value=""}});
 
 $("#copy-summary").addEventListener("click", copyOverviewSummary);
 $("#export-summary").addEventListener("click", exportSummary);
@@ -1649,8 +1654,8 @@ $("#export-current-page").addEventListener("click",exportCurrentPageImage);
 $("#export-dashboard").addEventListener("click",()=>{if(!currentMetrics.fileName)return showToast("Importe um CSV antes de exportar a imagem.",true);closeExportMenu();setExportBusy(true);exportDashboardImage()});
 $("#export-menu").addEventListener("click",event=>event.stopPropagation());
 document.addEventListener("click",closeExportMenu);
-$("#sla-central-import").addEventListener("click",()=>$("#csv-input").click());
-$("#page-faturamento").addEventListener("click",event=>{
+$("#sla-central-import")?.addEventListener("click",()=>$("#csv-input").click());
+$("#page-faturamento")?.addEventListener("click",event=>{
   const toggle=event.target.closest("[data-sla-toggle-area]");if(toggle){const area=toggle.dataset.slaToggleArea,date=toggle.dataset.slaToggleDate,expanded=slaCentralUi.expanded[area];if(expanded.has(date))expanded.delete(date);else expanded.add(date);renderSlaCentral();return}
   const button=event.target.closest("[data-sla-context]");if(!button||!button.dataset.slaContext)return;const context=slaCentralUi.contexts.get(button.dataset.slaContext);if(context)openSlaCentralDrawer(context.records,context.title);
 });
@@ -1701,7 +1706,7 @@ $("#sla-profile-form").addEventListener("submit",event=>{
   saveSlaProfiles();
   refreshSlaConsumers();
   clearProfileForm();
-  showToast("Perfil salvo. Limites aplicados em Expedição Pedidos.");
+  showToast("Perfil salvo. Limites aplicados em SLA.");
 });
 $("#sla-profile-list").addEventListener("click",event=>{const button=event.target.closest("[data-profile-action]");if(!button)return;const profile=slaProfiles.find(item=>item.id===button.dataset.profileId);if(!profile)return;if(button.dataset.profileAction==="edit")return editSlaProfile(profile);if(button.dataset.profileAction==="duplicate"){const copy=JSON.parse(JSON.stringify(profile));copy.id="sla_"+Date.now()+"_"+Math.random().toString(36).slice(2,7);copy.name=profile.name+" · cópia";copy.createdAt=new Date().toISOString();slaProfiles.push(copy);saveSlaProfiles();refreshSlaConsumers();return showToast("Perfil duplicado.")}if(button.dataset.profileAction==="delete"){if(!confirm('Excluir o perfil "'+profile.name+'"? Pedidos associados ficarão sem SLA configurado.'))return;slaProfiles=slaProfiles.filter(item=>item.id!==profile.id);saveSlaProfiles();refreshSlaConsumers();clearProfileForm();showToast("Perfil excluído.")}});
 document.querySelectorAll("[data-export-page]").forEach(button=>button.addEventListener("click",exportCurrentPageImage));
@@ -1722,6 +1727,7 @@ window.addEventListener("resize", () => {
 // Páginas administrativas continuam protegidas mesmo quando acessadas diretamente pelo hash.
 function requiredRoleForPage(page){if(["configuracoes","sla-profiles"].includes(page))return"manager";return"operation"}
 function navigateToPage(page,options={}){
+  if(page === "faturamento")return false;
   if (!["dashboard","gemba","produtividade","pin","prioridades","expedicao"].includes(page)) return false;
   const required=requiredRoleForPage(page);
   $("#export-current-page").hidden=["prioridades"].includes(page);
