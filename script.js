@@ -25,11 +25,11 @@ const $ = (selector) => document.querySelector(selector);
 /* ===================== ACESSO E SINCRONIZAÇÃO ===================== */
 
 // A chave anon é pública por definição; a autorização de escrita deve permanecer protegida por RLS no Supabase.
-const SUPABASE_CONFIG={url:"https://ywicdcngxlagtkjbfjep.supabase.co",anonKey:"sb_publishable_R_TpeEkM0E9j3LVhW9OMhw_ZAP0mBaC"};
+const SUPABASE_CONFIG={url:"",anonKey:""};
 const cloudState={client:null,user:null,role:"operation",isManager:false,syncing:false,lastSync:null,gatewayRequired:true};
 const ACCESS_LEVELS={operation:0,leader:1,manager:2,admin:3};
 function accessLevel(role){return ACCESS_LEVELS[role]??ACCESS_LEVELS.operation}
-function hasAccess(required){return accessLevel(cloudState.role)>=accessLevel(required||"operation")}
+function hasAccess(){return true}
 function ensureUnifiedNavigation(){
   const sidebar=$("#sidebar"),operationTitle=sidebar?.querySelector(".nav-title"),operationNav=operationTitle?.nextElementSibling,managerNavigation=$("#manager-navigation");
   if(!sidebar||!operationTitle||!operationNav||!managerNavigation||sidebar.querySelector(".command-navigation"))return;
@@ -39,24 +39,24 @@ function ensureUnifiedNavigation(){
   const operationLabel=document.createElement("p");operationLabel.className="nav-title";operationLabel.textContent="OPERAÇÃO";commandNav.after(operationLabel);operationLabel.after(operationNav);
   managerNavigation.querySelector(".nav-title").textContent="ADMINISTRAÇÃO";
 }
-function createAccessGateway(){if($("#access-gateway"))return;const logo=document.querySelector(".brand .logo")?.src||"";document.body.insertAdjacentHTML("beforeend",'<div class="access-gateway show" id="access-gateway"><div class="gateway-shell"><section class="gateway-copy"><img class="gateway-logo" src="'+logo+'" alt="Luft"><small>LUFT · STATUS OPERACIONAL</small><h1>Como você deseja acessar?</h1><p>Escolha o ambiente adequado para sua rotina. O modo Operação mantém o painel simples e seguro; o modo Gestor libera os controles administrativos.</p></section><section class="gateway-modes"><button class="gateway-mode" id="gateway-operation"><span class="gateway-icon">▦</span><span><strong>Entrar no Modo Operação</strong><small>Visualizar indicadores, importar CSV, pesquisar pedidos e exportar relatórios. Não exige login.</small></span><span class="gateway-arrow">→</span></button><button class="gateway-mode manager" id="gateway-manager"><span class="gateway-icon">⚙</span><span><strong>Entrar como Gestor</strong><small>Visualização completa, configurações, perfis de SLA, metas e sincronização com o banco.</small></span><span class="gateway-arrow">→</span></button><div class="gateway-foot">As permissões de edição são validadas pelo Supabase.</div></section></div></div>');const right=$(".header-right");if(right&&!$("#operation-ribbon"))right.insertAdjacentHTML("afterbegin",'<span class="mode-ribbon operation" id="operation-ribbon">● Operação · leitura</span><span class="mode-ribbon manager" id="manager-ribbon">● Gestor · edição</span>');$("#gateway-operation").addEventListener("click",enterOperationMode);$("#gateway-manager").addEventListener("click",()=>{$("#access-gateway").classList.remove("show");showAuthModal()})}
-function enterOperationMode(){cloudState.gatewayRequired=false;sessionStorage.setItem("luft-access-mode","operation");cloudState.role="operation";cloudState.isManager=false;applyAccessMode();$("#access-gateway")?.classList.remove("show");hideAuthModal();showToast("Modo Operação ativo · acesso somente visual.")}
-function enterManagerMode(){cloudState.gatewayRequired=false;sessionStorage.setItem("luft-access-mode","manager");applyAccessMode();$("#access-gateway")?.classList.remove("show");hideAuthModal()}
-function showAccessGateway(){cloudState.gatewayRequired=true;$("#auth-backdrop")?.classList.remove("show");$("#access-gateway")?.classList.add("show")}
+function createAccessGateway(){}
+function enterOperationMode(){cloudState.gatewayRequired=false;cloudState.role="local";cloudState.isManager=true;sessionStorage.removeItem("luft-access-mode");applyAccessMode();hideAuthModal()}
+function enterManagerMode(){enterOperationMode()}
+function showAccessGateway(){}
 function supabaseConfigured(){return /^https:\/\/.+\.supabase\.co$/.test(SUPABASE_CONFIG.url)&&SUPABASE_CONFIG.anonKey&&!SUPABASE_CONFIG.anonKey.startsWith("COLE_AQUI")&&window.supabase}
 function ensureDatabaseStatusUi(){if($("#database-status-title"))return;const page=$("#page-configuracoes"),intro=page&&page.querySelector(".intro");if(!page||!intro)return;intro.insertAdjacentHTML("afterend",'<article class="card database-status"><div class="database-status-icon">☁</div><div><small>SUPABASE</small><strong id="database-status-title">Banco não configurado</strong><p id="database-status-detail">Informe a URL e a chave pública no bloco SUPABASE_CONFIG do arquivo.</p></div><button class="btn secondary" id="database-sync">Sincronizar agora</button></article>')}
 function updateDatabaseStatus(title,detail){ensureDatabaseStatusUi();if($("#database-status-title"))$("#database-status-title").textContent=title;if($("#database-status-detail"))$("#database-status-detail").textContent=detail}
-function showAuthModal(){const authenticated=hasAccess("leader");$("#auth-backdrop").classList.add("show");$("#manager-login-form").hidden=authenticated;$("#auth-session").hidden=!authenticated;if(authenticated)$("#auth-session-email").textContent=cloudState.user?.email||"Usuário autenticado"}
-function hideAuthModal(){$("#auth-backdrop").classList.remove("show");$("#auth-error").textContent=""}
-function closeAuthModal(){if(cloudState.gatewayRequired)showAccessGateway();else hideAuthModal()}
-function applyAccessMode(){const manager=cloudState.isManager,authenticated=hasAccess("leader"),roleLabels={operation:"Operação",leader:"Líder",manager:"Gestor",admin:"Administrador"};$("#manager-navigation").hidden=!manager;document.querySelectorAll("[data-min-role]").forEach(element=>element.hidden=!hasAccess(element.dataset.minRole));$("#access-avatar").textContent=manager?(cloudState.role==="admin"?"AD":"GE"):authenticated?"LI":"OP";$("#access-name").textContent=authenticated?(cloudState.user?.user_metadata?.name||cloudState.user?.email||roleLabels[cloudState.role]):"Modo Operação";$("#access-role").textContent=authenticated?roleLabels[cloudState.role]+" · acesso autenticado":"Acesso visual";document.body.dataset.access=cloudState.role;const pickupSettings=$("#pickup-go-settings");if(pickupSettings)pickupSettings.hidden=!manager;const active=document.querySelector(".page.active"),required=active?.dataset.minRole||(active&&["page-configuracoes","page-sla-profiles"].includes(active.id)?"manager":"operation");if(active&&!hasAccess(required))navigateToPage("dashboard",{replaceHash:true});if($("#gemba-goals-form"))updateGembaGoalAccess()}
+function showAuthModal(){}
+function hideAuthModal(){}
+function closeAuthModal(){}
+function applyAccessMode(){cloudState.isManager=true;$("#manager-navigation").hidden=false;document.querySelectorAll("[data-min-role]").forEach(el=>{if(!el.hasAttribute("data-lite-excluded"))el.hidden=false});document.body.dataset.access="local";if($("#gemba-goals-form"))updateGembaGoalAccess()}
 async function verifyAccessProfile(user){if(!user||!cloudState.client)return"operation";const {data,error}=await cloudState.client.from("manager_profiles").select("role,active").eq("user_id",user.id).maybeSingle();if(error||!data?.active)return"operation";return Object.prototype.hasOwnProperty.call(ACCESS_LEVELS,data.role)?data.role:"operation"}
 async function verifyManager(user){return accessLevel(await verifyAccessProfile(user))>=accessLevel("manager")}
 async function applyCloudSettings(rows){const map=Object.fromEntries((rows||[]).map(row=>[row.setting_key,row.payload]));if(Array.isArray(map.sla_profiles)){slaProfiles=map.sla_profiles;localStorage.setItem("luft-sla-profiles-v1",JSON.stringify(slaProfiles))}if(map.pickup_schedules&&typeof map.pickup_schedules==="object"){pickupSchedules=map.pickup_schedules;localStorage.setItem("luft-pickup-schedules",JSON.stringify(pickupSchedules))}const cloudGemba=map.gemba_config;if(cloudGemba&&typeof cloudGemba==="object"){gembaConfig=sanitizeGembaConfig(cloudGemba);localStorage.setItem("luft-gemba-config",JSON.stringify(gembaConfig))}invalidateOperationalCaches();render(currentMetrics)}
 async function pullCloudSettings(showMessage){if(!cloudState.client)return false;cloudState.syncing=true;updateDatabaseStatus("Sincronizando…","Buscando as configurações operacionais do banco.");const {data,error}=await cloudState.client.from("system_settings").select("setting_key,payload,updated_at");cloudState.syncing=false;if(error){updateDatabaseStatus("Falha na sincronização",error.message);if(showMessage)showToast("Não foi possível sincronizar com o banco.",true);return false}await applyCloudSettings(data);cloudState.lastSync=new Date();updateDatabaseStatus("Banco conectado","Última sincronização às "+cloudState.lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));if(showMessage)showToast("Configurações sincronizadas com o Supabase.");return true}
 async function pushCloudSetting(key,payload){if(!cloudState.client||!cloudState.isManager)return false;const {error}=await cloudState.client.from("system_settings").upsert({setting_key:key,payload,updated_by:cloudState.user.id},{onConflict:"setting_key"});if(error){showToast("Alteração salva localmente, mas não sincronizada: "+error.message,true);return false}cloudState.lastSync=new Date();updateDatabaseStatus("Banco conectado","Alteração sincronizada às "+cloudState.lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));return true}
 async function syncAllSettings(){if(!cloudState.client)return showToast("Configure o Supabase antes de sincronizar.",true);if(!cloudState.isManager)return pullCloudSettings(true);updateDatabaseStatus("Sincronizando…","Enviando as configurações locais e conferindo o banco.");const rows=[{setting_key:"sla_profiles",payload:slaProfiles,updated_by:cloudState.user.id},{setting_key:"pickup_schedules",payload:pickupSchedules,updated_by:cloudState.user.id},{setting_key:"gemba_config",payload:gembaConfig,updated_by:cloudState.user.id}];const {error}=await cloudState.client.from("system_settings").upsert(rows,{onConflict:"setting_key"});if(error){updateDatabaseStatus("Falha na sincronização",error.message);return showToast("Não foi possível sincronizar as configurações.",true)}await pullCloudSettings(false);showToast("Todas as configurações foram sincronizadas.")}
-async function initializeSupabase(){ensureDatabaseStatusUi();const savedMode=sessionStorage.getItem("luft-access-mode");if(!supabaseConfigured()){updateDatabaseStatus("Banco aguardando configuração","Cole a URL do projeto e a chave pública anon no bloco SUPABASE_CONFIG.");applyAccessMode();if(savedMode==="operation")enterOperationMode();else showAccessGateway();return}cloudState.client=window.supabase.createClient(SUPABASE_CONFIG.url,SUPABASE_CONFIG.anonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});const {data:{session}}=await cloudState.client.auth.getSession();cloudState.user=session?.user||null;cloudState.role=await verifyAccessProfile(cloudState.user);cloudState.isManager=hasAccess("manager");applyAccessMode();await pullCloudSettings(false);if(hasAccess("leader"))enterManagerMode();else if(savedMode==="operation")enterOperationMode();else showAccessGateway();cloudState.client.auth.onAuthStateChange(async(event,sessionValue)=>{cloudState.user=sessionValue?.user||null;cloudState.role=await verifyAccessProfile(cloudState.user);cloudState.isManager=hasAccess("manager");applyAccessMode()})}
+async function initializeSupabase(){ensureDatabaseStatusUi();cloudState.client=null;updateDatabaseStatus("Dados neste navegador","Base e configura\u00e7\u00f5es salvas apenas neste navegador.");applyAccessMode();enterOperationMode();try{const saved=await window.BrowserData.read();if(saved?.fileName&&!currentMetrics.fileName){currentMetrics=saved;render(currentMetrics)}}catch(error){console.error(error);showToast("N\u00e3o foi poss\u00edvel restaurar a base local.",true)}}
 
 /* ===================== ESTADO OPERACIONAL E PERSISTÊNCIA ===================== */
 
@@ -279,7 +279,7 @@ function parseSlaCentralImportedAt(value){
  * registre seu índice aqui e inclua o valor apenas nas estruturas consumidoras.
  * A Central SLA deduplica por Nota Fiscal; quando não existe NF, usa o Pedido.
  */
-function calculateMetrics(csvText, fileName) {
+function calculateMetrics(csvText, fileName, onProgress) {
   const metrics = createEmptyMetrics();
   const billingStatuses = new Set(["ENVIADO PARA FATURAMENTO", "FATURADO", "COLETA INICIADA"]);
   const breakStatuses = new Set(["AG RESOLUCAO DE QUEBRA", "AG RESOLUCAO QUEBRA"]);
@@ -298,6 +298,7 @@ function calculateMetrics(csvText, fileName) {
   const triagedCarriers = new Map();
   const processedByDate = new Map();
   const slaCentralSeen = new Set();
+  const centralEngine = createSlaEngine(SLA_ENGINE_CONFIG);
   let indexes = null;
   const now = new Date();
   const dateKey = (date) => String(date.getDate()).padStart(2, "0") + "/" + String(date.getMonth() + 1).padStart(2, "0") + "/" + date.getFullYear();
@@ -314,26 +315,33 @@ function calculateMetrics(csvText, fileName) {
       const headers = values.map(normalizeHeader);
       const column = (name) => headers.indexOf(normalizeHeader(name));
       indexes = {
-        order: column("Pedido de Venda"), series: column("Série"), status: column("Status da Nota Fiscal"),
+        marketplace: column("Marketplace"), modality: column("Modalidade"), order: column("Pedido de Venda"), series: column("Série"), status: column("Status da Nota Fiscal"),
         processed: column("Processado"), processedAt: column("Processado em"), volumes: column("Qtde. de Volumes"),
         uf: column("UF Destinatário"), products: column("Qtde. Total de Produto"),
         load: column("Carga"), weighedAt: column("Pesado em"), carrier: column("Transportadora"),
         invoice: column("Nota Fiscal"), wave: column("Onda"), waveId: column("idOnda"), service: column("Serviço da Transportadora"),
         imported: column("Importado em"), registered: column("Cadastrada em"), client: column("Destinatário"), cancelledAt: column("Cancelado em"),
         skuQty: column("Qtde. de Produto"), separatedAt: column("Separado em"), billedAt: column("Faturado em"), conferenceAt: column("Conferido em"), conferenceStarted: column("Conferência Iniciada"),
+        separationUser: ["Usuário da Separação", "Usuário Separação", "Separado por", "Separador"].map(column).find(i=>i>=0) ?? -1,
         serviceCode: column("Código do Serviço"), weighingUser: column("Usuário da Pesagem"), shipment: column("Título Romaneio"), orderClassification: column("Classificação Tipo Pedido")
       };
-      const slaCentralRequired=[["Pedido de Venda",indexes.order],["Nota Fiscal",indexes.invoice],["Série",indexes.series],["Status da Nota Fiscal",indexes.status],["Importado em",indexes.imported],["Serviço da Transportadora",indexes.service]];
+      const slaCentralRequired=[["Série",indexes.series],["Status da Nota Fiscal",indexes.status],["Importado em",indexes.imported]];
+      if(indexes.invoice<0&&indexes.order<0)slaCentralRequired.push(["Nota Fiscal ou Pedido de Venda",-1]);
+      if(indexes.marketplace<0&&indexes.service<0&&indexes.modality<0)slaCentralRequired.push(["Marketplace, Serviço da Transportadora ou Modalidade",-1]);
       metrics.slaCentralDiagnostics.missingColumns=slaCentralRequired.filter(item=>item[1]<0).map(item=>item[0]);
       const required = [["Pedido de Venda",indexes.order],["Série",indexes.series],["Status da Nota Fiscal",indexes.status],["Processado",indexes.processed],["Processado em",indexes.processedAt],["Qtde. de Volumes",indexes.volumes],["Qtde. Total de Produto",indexes.products],["Carga",indexes.load],["Transportadora",indexes.carrier]];
       const missing=required.filter(item=>item[1]<0).map(item=>item[0]);
       if(missing.length)throw new Error("Colunas obrigatórias ausentes: "+missing.join(", ")+".");
       return;
     }
+    if(!metrics.slaCentralDiagnostics.missingColumns.length)centralEngine.collect(values,indexes,metrics.slaCentralRecords,slaCentralSeen,metrics.slaCentralDiagnostics,rowIndex);
+    if(onProgress&&rowIndex%5000===0)onProgress(rowIndex);
     const order = (values[indexes.order] || "").trim();
     metrics.receivedRows++;
     if (!order) { metrics.rejectedRows++; return; }
     const series = (values[indexes.series] || "").trim();
+    const classification = indexes.orderClassification >= 0 ? values[indexes.orderClassification] || "" : "";
+    const isB2c = ["venda omn channel", "alom-spasa-venda funcion.", "spasa-rem amc"].includes(normalizeHeader(classification).replace(/\s+/g, " "));
     const status = normalizeHeader(values[indexes.status] || "").toUpperCase();
     const processedAt = (values[indexes.processedAt] || "").trim();
     const productsRaw=String(values[indexes.products]||"").trim(),volumesRaw=String(values[indexes.volumes]||"").trim();
@@ -344,52 +352,28 @@ function calculateMetrics(csvText, fileName) {
     const carrier = (values[indexes.carrier] || "").trim();
     const load = (values[indexes.load] || "").trim();
     const weighedAt = (values[indexes.weighedAt] || "").trim();
+    const conferenceAt = indexes.conferenceAt >= 0 ? (values[indexes.conferenceAt] || "").trim() : "";
     const isBillingStatus = billingStatuses.has(status);
     const isBreakStatus = status.startsWith("AG") && status.includes("RESOLUCAO") && status.includes("QUEBRA");
     const isTriagedStatus = triagedStatuses.has(status) || isBreakStatus;
     const isWithoutPdfStatus = withoutPdfStatuses.has(status) || isBreakStatus;
     const isFedex = normalizeHeader(carrier).includes("fedex");
     const isFlBrasil = normalizeHeader(carrier).includes("fl brasil");
+    const isPinCarrier = isFlBrasil || /\bmanaus\b/.test(normalizeHeader(carrier));
 
     const isProcessed = (values[indexes.processed] || "").trim() === "1";
     const cancelledAt = indexes.cancelledAt >= 0 ? (values[indexes.cancelledAt] || "").trim() : "";
     const isCancelled = Boolean(cancelledAt) || status === "CANCELADO";
-    if(!isCancelled&&!metrics.slaCentralDiagnostics.missingColumns.length){
-      const normalizedSeries=normalizeSlaCentralValue(values[indexes.series]),seriesNumber=Number(normalizedSeries.replace(",","."));
-      const serviceRaw=repairCommonMojibake(values[indexes.service]).replace(/\s+/g," ").trim();
-      if((normalizedSeries==="17"||seriesNumber===17)&&serviceRaw){
-        const statusRaw=repairCommonMojibake(values[indexes.status]).replace(/\s+/g," ").trim(),area=slaCentralAreaForStatus(statusRaw);
-        if(!area){
-          const key=normalizeSlaCentralValue(statusRaw)||"nao informado",unknown=metrics.slaCentralDiagnostics.unknownStatuses[key]||{label:statusRaw||"Não informado",count:0};
-          unknown.count++;metrics.slaCentralDiagnostics.unknownStatuses[key]=unknown;
-        }else{
-          const importedRaw=String(values[indexes.imported]||"").trim(),imported=parseSlaCentralImportedAt(importedRaw);
-          if(!imported)metrics.slaCentralDiagnostics.invalidDates++;
-          else{
-            const invoice=String(values[indexes.invoice]||"").trim(),fallback=!invoice,identifier=invoice||order,uniqueKey=(fallback?"pedido:":"nf:")+normalizeSlaCentralValue(identifier);
-            if(slaCentralSeen.has(uniqueKey))metrics.slaCentralDiagnostics.duplicateRows++;
-            else{
-              slaCentralSeen.add(uniqueKey);
-              metrics.slaCentralRecords.push({
-                id:uniqueKey,identifier,identifierFallback:fallback,invoice,order,area,status:statusRaw,statusNormalized:normalizeSlaCentralValue(statusRaw),
-                service:serviceRaw,serviceNormalized:normalizeSlaCentralValue(serviceRaw),series:String(values[indexes.series]||"").trim(),importedRaw,importedStamp:imported.stamp,importDateKey:imported.dateKey,importDateLabel:imported.dateLabel,importHour:imported.hour,
-                carrier:carrier||"Transportadora não informada",load:load||"Sem carga",wave:indexes.wave>=0?(values[indexes.wave]||"").trim():"",waveId:indexes.waveId>=0?(values[indexes.waveId]||"").trim():"",
-                volumes,products,responsible:indexes.weighingUser>=0?(values[indexes.weighingUser]||"").trim():""
-              });
-            }
-          }
-        }
-      }
-    }
     if (!isCancelled) {
       const gembaImportedRaw = (indexes.imported >= 0 ? values[indexes.imported] : "") || (indexes.registered >= 0 ? values[indexes.registered] : "");
       const gembaImportedAt = parseBrazilianDateTime(gembaImportedRaw);
-      const gembaSegment = series === "17" ? "b2c" : (["", "11", "14"].includes(series) ? "b2b" : null);
+      const gembaSegment = isB2c ? "b2c" : "b2b";
       metrics.gembaOrders.push({
+        separationUser:indexes.separationUser>=0?(values[indexes.separationUser]||"").trim():"", separatedStamp:parseBrazilianDateTime(values[indexes.separatedAt])?.getTime()||0, weighedStamp:parseBrazilianDateTime(weighedAt)?.getTime()||0, weighingUser:indexes.weighingUser>=0?(values[indexes.weighingUser]||"").trim():"",
         order, segment:gembaSegment||"other", series:series || "Vazia", wave:indexes.wave >= 0 ? (values[indexes.wave] || "").trim() : "",
         waveId:indexes.waveId >= 0 ? (values[indexes.waveId] || "").trim() : "", status:(values[indexes.status] || "").trim(),
         products, skus:indexes.skuQty >= 0 ? Number(String(values[indexes.skuQty] || "0").replace(",",".")) || 0 : 0,
-        separatedAt:indexes.separatedAt >= 0 ? (values[indexes.separatedAt] || "").trim() : "", billedAt:indexes.billedAt >= 0 ? (values[indexes.billedAt] || "").trim() : "", weighedAt,
+        separatedAt:indexes.separatedAt >= 0 ? (values[indexes.separatedAt] || "").trim() : "", billedAt:indexes.billedAt >= 0 ? (values[indexes.billedAt] || "").trim() : "", weighedAt, conferenceAt, conferenceStamp:parseBrazilianDateTime(conferenceAt)?.getTime()||0,
         conferenceStarted:indexes.conferenceStarted >= 0 ? (values[indexes.conferenceStarted] || "").trim() === "1" : false,
         processed:isProcessed, importedStamp:gembaImportedAt ? gembaImportedAt.getTime() : 0, carrier, load,
         orderClassification:indexes.orderClassification>=0?(values[indexes.orderClassification]||"").trim():""
@@ -446,7 +430,7 @@ function calculateMetrics(csvText, fileName) {
       seen.withoutPdf.add(order); addSummary(metrics.withoutPdfSummary, seen.withoutPdfSummary, order, products, volumes);
     }
     const uf = (values[indexes.uf] || "").trim().toUpperCase();
-    if (isBillingStatus && pinStates.has(uf) && isFlBrasil) {
+    if (isBillingStatus && pinStates.has(uf) && isPinCarrier) {
       if (!seen.pin.has(order)) {
         seen.pin.add(order);
         const detail={ order, uf, series:series || "Vazia", status:(values[indexes.status] || "").trim() || "Não informado", load: load || "Sem carga" };metrics.pinDetails.push(detail);pinDetailByOrder.set(order,detail);
@@ -470,10 +454,10 @@ function calculateMetrics(csvText, fileName) {
       }
     }
 
-    const productivityMatch = weighedAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
+    const productivityMatch = conferenceAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
     if (productivityMatch) {
       const hour = Number(productivityMatch[4]);
-      const segment = series === "17" ? "b2c" : (["", "11", "14"].includes(series) ? "b2b" : null);
+      const segment = isB2c ? "b2c" : "b2b";
       const shift = hour >= 6 && hour <= 14 ? "shift1" : hour >= 15 && hour <= 23 ? "shift2" : null;
       if (segment && shift) {
         const date = productivityMatch[1] + "/" + productivityMatch[2] + "/" + productivityMatch[3];
@@ -485,20 +469,20 @@ function calculateMetrics(csvText, fileName) {
       }
     }
 
-    if (hourlyStatuses.has(status) && (values[indexes.load] || "").trim() === "" && weighedAt) {
-      const match = weighedAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
+    if (hourlyStatuses.has(status) && (values[indexes.load] || "").trim() === "" && conferenceAt) {
+      const match = conferenceAt.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):/);
       if (match) {
         const label = match[1] + "/" + match[2] + " · " + match[4] + "h";
         const weighedUtc = Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
         const daysOld = Math.floor((todayUtc - weighedUtc) / 86400000);
-        const target = series === "17" ? b2c : (series === "14" || series === "" ? b2b : null);
+        const target = isB2c ? b2c : b2b;
         const descriptor = carrier || "Transportadora não informada";
         if (target) {
           const bucketKey = label + "||" + descriptor;
           if (!target.has(bucketKey)) target.set(bucketKey, { orders: new Map(), alert: false });
           const bucket = target.get(bucketKey);
-          if (!bucket.orders.has(order)) bucket.orders.set(order, { invoice:indexes.invoice>=0?(values[indexes.invoice]||"").trim():"", order, shipment:indexes.shipment>=0?(values[indexes.shipment]||"").trim():"", orderClassification:indexes.orderClassification>=0?(values[indexes.orderClassification]||"").trim():"", serviceCode:indexes.serviceCode>=0?(values[indexes.serviceCode]||"").trim():"", carrier:descriptor, weighedAt, weighingUser:indexes.weighingUser>=0?(values[indexes.weighingUser]||"").trim():"", volumes });
-          if ((series === "17" && daysOld >= 1) || (series !== "17" && daysOld >= 2)) bucket.alert = true;
+          if (!bucket.orders.has(order)) bucket.orders.set(order, { invoice:indexes.invoice>=0?(values[indexes.invoice]||"").trim():"", order, shipment:indexes.shipment>=0?(values[indexes.shipment]||"").trim():"", orderClassification:indexes.orderClassification>=0?(values[indexes.orderClassification]||"").trim():"", serviceCode:indexes.serviceCode>=0?(values[indexes.serviceCode]||"").trim():"", carrier:descriptor, conferenceAt, weighingUser:indexes.weighingUser>=0?(values[indexes.weighingUser]||"").trim():"", volumes });
+          if ((isB2c && daysOld >= 1) || (!isB2c && daysOld >= 2)) bucket.alert = true;
         }
       }
     }
@@ -506,7 +490,7 @@ function calculateMetrics(csvText, fileName) {
 
   if(!indexes)throw new Error("O arquivo CSV não possui uma linha de cabeçalho válida.");
   if(metrics.receivedRows===0)throw new Error("O CSV contém apenas o cabeçalho e não possui registros.");
-  if(metrics.recordCount===0)throw new Error("Nenhum registro válido foi encontrado. Verifique Pedido de Venda, produtos e volumes.");
+  if(metrics.recordCount===0&&!metrics.slaCentralRecords.length)throw new Error("Nenhum registro válido foi encontrado. Verifique Pedido de Venda, produtos e volumes.");
   const buckets = (map) => Array.from(map, ([key, bucket]) => {
     const parts = key.split("||");
     const details=Array.from(bucket.orders.values());
@@ -562,6 +546,7 @@ function calculateMetrics(csvText, fileName) {
     };
   });
   metrics.fileName = fileName;
+  metrics.slaCentralImportedAt = new Date().toISOString();
   metrics.importedAt = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   return metrics;
 }
@@ -570,7 +555,7 @@ function calculateMetrics(csvText, fileName) {
 function decodeCsvBuffer(buffer){if(typeof buffer==="string")return buffer;const bytes=new Uint8Array(buffer),utf8=new TextDecoder("utf-8").decode(bytes);if(utf8.includes("\uFFFD"))try{return new TextDecoder("windows-1252").decode(bytes)}catch(error){}return utf8}
 
 // Processa bases grandes em Web Worker; o fallback síncrono mantém compatibilidade com navegadores restritos.
-function calculateMetricsAsync(csvBuffer, fileName) {
+function calculateMetricsAsync(csvBuffer, fileName, options = {}) {
   if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") {
     return Promise.resolve().then(() => calculateMetrics(decodeCsvBuffer(csvBuffer), fileName));
   }
@@ -578,6 +563,8 @@ function calculateMetricsAsync(csvBuffer, fileName) {
     '"use strict";',
     'const zeroSummary = ' + zeroSummary.toString() + ';',
     createEmptyMetrics.toString(),
+    createSlaEngine.toString(),
+    'const SLA_ENGINE_CONFIG = ' + JSON.stringify(SLA_ENGINE_CONFIG) + ';',
     normalizeHeader.toString(),
     forEachCsvRow.toString(),
     decodeCsvBuffer.toString(),
@@ -592,13 +579,17 @@ function calculateMetricsAsync(csvBuffer, fileName) {
     slaCentralTimestamp.toString(),
     parseSlaCentralImportedAt.toString(),
     calculateMetrics.toString(),
-    'self.onmessage = function(event) { try { const csvText=decodeCsvBuffer(event.data.csvBuffer); self.postMessage({ ok:true, metrics:calculateMetrics(csvText,event.data.fileName) }); } catch (error) { self.postMessage({ ok:false, message:error && error.message ? error.message : String(error) }); } };'
+    'self.onmessage = function(event) { try { const csvText=decodeCsvBuffer(event.data.csvBuffer); self.postMessage({ ok:true, metrics:calculateMetrics(csvText,event.data.fileName,function(rows){self.postMessage({progress:rows})}) }); } catch (error) { self.postMessage({ ok:false, message:error && error.message ? error.message : String(error) }); } };'
   ].join("\n");
   const workerUrl = URL.createObjectURL(new Blob([workerSource], { type:"text/javascript" }));
   return new Promise((resolve, reject) => {
     const worker = new Worker(workerUrl);
-    const finish = () => { worker.terminate(); URL.revokeObjectURL(workerUrl); };
+    const cancel = () => { finish(); reject(new Error("Importação cancelada. Dados anteriores preservados.")); };
+    const finish = () => { worker.terminate(); URL.revokeObjectURL(workerUrl); options.signal?.removeEventListener("abort",cancel); };
+    options.signal?.addEventListener("abort",cancel,{once:true});
+    if(options.signal?.aborted){cancel();return;}
     worker.onmessage = event => {
+      if(event.data.progress){options.onProgress?.(event.data.progress);return;}
       finish();
       if (event.data && event.data.ok) resolve(event.data.metrics);
       else reject(new Error(event.data && event.data.message || "Falha ao processar o CSV."));
@@ -657,6 +648,7 @@ function carrierVisual(value) {
 }
 
 function carrierLogoData(value) {
+  const official=window.CarrierBrands.src(value);if(official)return official;
   const visual = carrierVisual(value);
   const fontSize = visual.short.length > 2 ? 17 : 22;
   const accent = visual.accent ? '<rect x="43" y="0" width="21" height="64" fill="' + visual.accent + '"/>' : '';
@@ -716,7 +708,7 @@ function pendingMatrixHtml(data, showVolumes) {
   labels.forEach(label => {
     const hourLabel = dates.size === 1 ? (label.split(" · ")[1] || label) : label;
     let rowTotal = 0, rowVolumes = 0;
-    cells += '<div class="matrix-cell matrix-hour" title="Data e hora da pesagem: ' + escapeHtml(label) + '"><span>' + escapeHtml(hourLabel) + '</span></div>';
+    cells += '<div class="matrix-cell matrix-hour" title="Data e hora da conferência: ' + escapeHtml(label) + '"><span>' + escapeHtml(hourLabel) + '</span></div>';
     descriptors.forEach(descriptor => {
       const item = values.get(label + "||" + descriptor);
       const value = item ? item.orders : 0;
@@ -807,10 +799,10 @@ function productivityShiftHtml(title, data) {
 function productivityWaveHtml(days) {
   const chronological = days.slice().reverse();
   const series = [
-    { label: "B2C · 1º turno", color: "#2563eb", values: chronological.map(day => day.b2c.shift1.products) },
-    { label: "B2C · 2º turno", color: "#06b6d4", values: chronological.map(day => day.b2c.shift2.products) },
-    { label: "B2B · 1º turno", color: "#8b5cf6", values: chronological.map(day => day.b2b.shift1.products) },
-    { label: "B2B · 2º turno", color: "#f59e0b", values: chronological.map(day => day.b2b.shift2.products) }
+    { label: "B2C · 1º turno", color: DeliveryColors.b2c, values: chronological.map(day => day.b2c.shift1.products) },
+    { label: "B2C · 2º turno", color: DeliveryColors.b2c, values: chronological.map(day => day.b2c.shift2.products) },
+    { label: "B2B · 1º turno", color: DeliveryColors.b2b, values: chronological.map(day => day.b2b.shift1.products) },
+    { label: "B2B · 2º turno", color: DeliveryColors.b2b, values: chronological.map(day => day.b2b.shift2.products) }
   ];
   const maximum = Math.max(1, ...series.flatMap(item => item.values));
   const left = 62, right = 970, top = 22, bottom = 245, width = right - left, height = bottom - top;
@@ -838,7 +830,7 @@ function productivityHtml(productivity) {
     const b2cTotal=day.b2c.shift1.products+day.b2c.shift2.products,b2bTotal=day.b2b.shift1.products+day.b2b.shift2.products;
     return '<article class="card history-card"><h3>' + day.date + '</h3><div class="history-totals"><div class="history-total"><small>Total B2C</small><strong>'+fmt(b2cTotal)+'</strong></div><div class="history-total"><small>Total B2B</small><strong>'+fmt(b2bTotal)+'</strong></div></div><div class="history-lines">' + line('B2C T1', day.b2c.shift1) + line('B2C T2', day.b2c.shift2) + line('B2B T1', day.b2b.shift1) + line('B2B T2', day.b2b.shift2) + '</div></article>';
   }).join("");
-  return '<article class="card productivity-today"><div class="productivity-head"><div><small>Produtividade do dia</small><h2>Produtos pesados por turno</h2></div><div class="productivity-date">' + today.date + '</div></div><div class="productivity-segments">' + segment('B2C', today.b2c, 'Série 17') + segment('B2B', today.b2b, 'Séries vazia, 11 e 14') + '</div></article><div class="history-grid">' + history + '</div><article class="card productivity-chart-card"><div class="card-head"><div><h2>Evolução da produção diária</h2><p>Total de produtos por dia · cada linha representa um segmento e turno</p></div></div>' + productivityWaveHtml(productivity.days) + '</article>';
+  return '<article class="card productivity-today"><div class="productivity-head"><div><small>Produtividade do dia</small><h2>Produtos conferidos por turno</h2></div><div class="productivity-date">' + today.date + '</div></div><div class="productivity-segments">' + segment('B2C', today.b2c, 'Classificações B2C') + segment('B2B', today.b2b, 'Demais classificações') + '</div></article><div class="history-grid">' + history + '</div><article class="card productivity-chart-card"><div class="card-head"><div><h2>Evolução da produção diária</h2><p>Total de produtos por dia · cada linha representa um segmento e turno</p></div></div>' + productivityWaveHtml(productivity.days) + '</article>';
 }
 
 /* ===================== GEMBA ===================== */
@@ -875,10 +867,10 @@ function loadGembaAbs(){try{const data=JSON.parse(localStorage.getItem("gemba_ab
 function saveGembaAbs(){localStorage.setItem("gemba_abs",JSON.stringify(gembaAbs));renderGembaAbs();renderGembaSummary()}
 function resetGembaAbs(){gembaAbs=[];localStorage.removeItem("gemba_abs");renderGembaAbs();renderGembaSummary()}
 
-// Produção considera a data de pesagem; registros de outras datas não entram na meta do dia.
+// Produção considera a data de conferência; registros de outras datas não entram na meta do dia.
 function calculateGembaProduction(metrics,referenceDate=new Date()){
   const today=String(referenceDate.getDate()).padStart(2,"0")+"/"+String(referenceDate.getMonth()+1).padStart(2,"0")+"/"+referenceDate.getFullYear();
-  return(metrics.gembaOrders||[]).reduce((result,item)=>{if(!String(item.weighedAt||"").startsWith(today))return result;if(item.segment==="b2c")result.b2c+=nonNegativeNumber(item.products);else if(item.segment==="b2b")result.b2b+=nonNegativeNumber(item.products);return result},{b2c:0,b2b:0});
+  return(metrics.gembaOrders||[]).reduce((result,item)=>{const producedAt=item.conferenceAt;if(!String(producedAt||"").startsWith(today))return result;if(item.segment==="b2c")result.b2c+=nonNegativeNumber(item.products);else if(item.segment==="b2b")result.b2b+=nonNegativeNumber(item.products);return result},{b2c:0,b2b:0});
 }
 
 // Compensação transfere somente o excedente real entre B2C e B2B, sem criar produção artificial.
@@ -907,7 +899,7 @@ function gembaFlowValue(label,value){return '<div class="gemba-flow-value"><span
 function gembaFlowCard(item,index){const tones=["#2563eb","#8b5cf6","#f59e0b","#06b6d4","#ec4899","#14b8a6","#6366f1","#f97316","#22c55e","#64748b"],values=gembaFlowValue("Fluxo geral",item.general)+gembaFlowValue("Importado",item.imported)+gembaFlowValue("Em fluxo",item.inFlow)+gembaFlowValue("Aguardando separação",item.waiting);return '<article class="gemba-flow-item" style="--tone:'+tones[index%tones.length]+'"><h3>'+escapeHtml(item.label)+'</h3><div>'+values+'</div></article>'}
 function renderGembaFlow(flow,hasFile){if(!hasFile)return '<div class="empty-state">Importe o CSV para calcular o fluxo operacional.</div>';if(!flow.classificationAvailable)return '<div class="empty-state">A coluna Classificação Tipo Pedido não está disponível ou não possui valores.</div>';if(!flow.items.length)return '<div class="empty-state">Nenhum pedido encontrado nas classificações e status monitorados.</div>';return '<div class="gemba-flow-grid">'+flow.items.map(gembaFlowCard).join("")+'</div><p class="gemba-rule-note">Somente classificações e status configurados são exibidos. Cards sem pedidos elegíveis permanecem ocultos.</p>'}
 function gembaForecastCard(label,data,tone){const percent=data.adjusted?Math.min(100,data.produced/data.adjusted*100):100,status=data.remaining?'<strong class="gemba-remaining">Faltam produzir '+fmt(data.remaining)+'</strong>':'<strong class="gemba-achieved">Meta atingida'+(data.above?' · +'+fmt(data.above)+' acima da necessidade':'')+'</strong>';return '<article class="gemba-forecast-item '+tone+'"><div class="gemba-forecast-title"><h3>'+label+'</h3><span>'+decimalFmt(percent)+'%</span></div><div class="gemba-progress"><i style="width:'+percent+'%"></i></div><div class="gemba-forecast-values"><span>Meta original <b>'+fmt(data.meta)+'</b></span><span>Produzido <b>'+fmt(data.produced)+'</b></span><span>Déficit original <b>'+fmt(data.deficit)+'</b></span><span>Compensação recebida <b>+'+fmt(data.compensation)+'</b></span><span>Necessidade ajustada <b>'+fmt(data.adjusted)+'</b></span></div>'+status+'</article>'}
-function updateGembaGoalAccess(){const editable=cloudState.isManager;["#gemba-meta-b2c","#gemba-meta-b2b","#gemba-save-goals"].forEach(selector=>{const element=$(selector);if(element)element.disabled=!editable});if($("#gemba-goals-access"))$("#gemba-goals-access").textContent=editable?"Metas sincronizadas com as configurações da gestão.":"Somente Gestor ou Administrador pode alterar as metas."}
+function updateGembaGoalAccess(){const editable=cloudState.isManager;["#gemba-meta-b2c","#gemba-meta-b2b","#gemba-save-goals"].forEach(selector=>{const element=$(selector);if(element)element.disabled=!editable});if($("#gemba-goals-access"))$("#gemba-goals-access").textContent=editable?"Metas salvas apenas neste navegador.":"Somente Gestor ou Administrador pode alterar as metas."}
 function renderGembaAbs(){if(!$("#gemba-abs-list"))return;$("#gemba-abs-count").textContent="ABS: "+fmt(gembaAbs.length);$("#gemba-abs-list").innerHTML=gembaAbs.length?gembaAbs.map(item=>'<div class="gemba-abs-row"><span><strong>'+escapeHtml(item.nome)+'</strong><small>'+escapeHtml(item.tipo)+'</small></span><span><button data-gemba-abs-action="edit" data-gemba-abs-id="'+escapeHtml(item.id)+'">Editar</button><button class="danger-mini" data-gemba-abs-action="delete" data-gemba-abs-id="'+escapeHtml(item.id)+'">Excluir</button></span></div>').join(""):'<div class="empty-state compact">Nenhum ABS registrado.</div>'}
 function generateGembaSummary(metrics=currentMetrics,referenceDate=new Date()){
   const date=referenceDate,gemba=calculateGembaMetrics(metrics),lines=[greetingForTime(date)+"!","Segue informações do GEMBA",String(date.getDate()).padStart(2,"0")+"/"+String(date.getMonth()+1).padStart(2,"0")];
@@ -918,9 +910,9 @@ function generateGembaSummary(metrics=currentMetrics,referenceDate=new Date()){
   lines.push("","ABS: "+fmt(gembaAbs.length));gembaAbs.forEach(item=>lines.push(item.nome+" — "+item.tipo));return lines.join("\n")
 }
 function renderGembaSummary(){if($("#gemba-summary-preview"))$("#gemba-summary-preview").textContent=generateGembaSummary()}
-function renderGemba(metrics){const gemba=calculateGembaMetrics(metrics),now=new Date();$("#gemba-updated").textContent=metrics.fileName?now.toLocaleDateString("pt-BR")+" · atualizado às "+metrics.importedAt:"Aguardando importação do CSV";$("#gemba-flow").innerHTML=renderGembaFlow(gemba.flow,Boolean(metrics.fileName));$("#gemba-meta-b2c").value=gembaConfig.metaB2c;$("#gemba-meta-b2b").value=gembaConfig.metaB2b;$("#gemba-forecast").innerHTML='<div class="gemba-forecast-grid">'+gembaForecastCard("B2C",gemba.forecast.b2c,"blue")+gembaForecastCard("B2B",gemba.forecast.b2b,"violet")+'</div>';updateGembaGoalAccess();renderGembaAbs();renderGembaSummary()}
-function openGembaAbs(item){$("#gemba-abs-id").value=item?.id||"";$("#gemba-abs-name").value=item?.nome||"";$("#gemba-abs-type").value=item?.tipo||"";$("#gemba-abs-title").textContent=item?"Editar ABS":"Adicionar ABS";$("#gemba-abs-error").textContent="";$("#gemba-abs-modal").classList.add("show");$("#gemba-abs-modal").setAttribute("aria-hidden","false");setTimeout(()=>$("#gemba-abs-name").focus(),0)}
-function closeGembaAbs(){$("#gemba-abs-modal").classList.remove("show");$("#gemba-abs-modal").setAttribute("aria-hidden","true");$("#gemba-abs-form").reset();$("#gemba-abs-id").value="";$("#gemba-abs-error").textContent=""}
+function renderGemba(metrics){const gemba=calculateGembaMetrics(metrics),now=new Date();$("#gemba-updated").textContent=metrics.fileName?"Última atualização: "+window.BrowserData.updatedLabel(metrics):"Aguardando importação do CSV";$("#gemba-flow").innerHTML=renderGembaFlow(gemba.flow,Boolean(metrics.fileName));$("#gemba-meta-b2c").value=gembaConfig.metaB2c;$("#gemba-meta-b2b").value=gembaConfig.metaB2b;$("#gemba-forecast").innerHTML='<div class="gemba-forecast-grid">'+gembaForecastCard("B2C",gemba.forecast.b2c,"blue")+gembaForecastCard("B2B",gemba.forecast.b2b,"violet")+'</div>';updateGembaGoalAccess();renderGembaAbs();renderGembaSummary()}
+function openGembaAbs(item){const modal=$("#gemba-abs-modal");$("#gemba-abs-id").value=item?.id||"";$("#gemba-abs-name").value=item?.nome||"";$("#gemba-abs-type").value=item?.tipo||"";$("#gemba-abs-title").textContent=item?"Editar ABS":"Adicionar ABS";$("#gemba-abs-error").textContent="";modal.removeAttribute("inert");modal.classList.add("show");modal.setAttribute("aria-hidden","false");setTimeout(()=>$("#gemba-abs-name").focus(),0)}
+function closeGembaAbs(){const modal=$("#gemba-abs-modal");modal.classList.remove("show");modal.setAttribute("aria-hidden","true");modal.setAttribute("inert","");$("#gemba-abs-form").reset();$("#gemba-abs-id").value="";$("#gemba-abs-error").textContent=""}
 async function writeClipboardText(text){if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text);const area=document.createElement("textarea");area.value=text;area.style.position="fixed";area.style.opacity="0";document.body.append(area);try{area.select();if(!document.execCommand("copy"))throw new Error("Cópia não suportada")}finally{area.remove()}}
 async function copyGemba(){if(!currentMetrics.fileName)return showToast("Importe um CSV antes de copiar o GEMBA.",true);try{await writeClipboardText(generateGembaSummary());showToast("GEMBA copiado com sucesso.")}catch(error){showToast("Não foi possível copiar o GEMBA neste navegador.",true)}}
 /* ===================== CENTRAL SLA E DETALHAMENTOS ===================== */
@@ -976,177 +968,111 @@ function slaCentralDateKeyFromStamp(stamp){const parts=slaCentralZonedParts(stam
 function slaCentralOffsetDateKey(dateKey,offset){const parts=dateKey.split("-").map(Number),date=new Date(Date.UTC(parts[0],parts[1]-1,parts[2]+offset));return date.getUTCFullYear()+"-"+String(date.getUTCMonth()+1).padStart(2,"0")+"-"+String(date.getUTCDate()).padStart(2,"0")}
 function slaCentralDateLabel(dateKey){const parts=dateKey.split("-");return parts[2]+"/"+parts[1]+"/"+parts[0]}
 // Enriquece o registro sem mutar a linha original importada do CSV.
-function classifySlaCentralDelay(record,todayKey,referenceStamp){
-  const profile=matchingSlaProfile(record),deadline=slaProfileDeadline(record,profile),dueStamp=deadline?.due,delayed=Number.isFinite(dueStamp)&&referenceStamp>dueStamp,priorityToday=deadline?.dueDateKey===todayKey;
-  const delayReason=profile
-    ?(deadline.afterCutoff?"Importado após "+deadline.cutoff+"; prazo avançado em um dia adicional e expedição até "+deadline.deadlineTime+".":"Importado dentro do corte; expedição até "+deadline.deadlineTime+" no "+(deadline.dispatchDay==="next_day"?"dia seguinte":"mesmo dia")+".")
-    :"Serviço sem perfil: prazo automático de 48 horas corridas após a importação.";
-  return{profileId:profile?.id||null,profileName:profile?.name||"Regra automática 48h",profileApplied:Boolean(profile),cutoff:deadline?.cutoff||"",deadlineTime:deadline?.deadlineTime||"",dispatchDay:deadline?.dispatchDay||"",dueStamp,dueDateKey:deadline?.dueDateKey||"",deadlineSource:deadline?.source||"",priorityToday,automatic48h:!profile,delayed,delayKind:delayed?(profile?"profile-overdue":"automatic-overdue"):(priorityToday?"due-today":"within-deadline"),delayReason};
-}
-
-/**
- * Monta o modelo compartilhado por KPIs, matrizes, drawer e exportação.
- * Manter todos esses consumidores na mesma fonte evita divergência de contagens.
- */
+﻿/* Central SLA views consume the engine indexes; no CSV scanning on clicks. */
+const centralViewEngine=createSlaEngine(SLA_ENGINE_CONFIG);
+const centralLabels={ATRASADO:'Atrasados',URGENTE:'Urgentes',VENCE_HOJE:'Vencem hoje',DENTRO_DO_PRAZO:'Dentro do prazo',PROXIMO_CICLO:'Próximo ciclo',SEM_REGRA:'Sem regra',DATA_INVALIDA:'Data inválida'};
+let centralModelCache=null;
 function buildSlaCentralModel(metrics,referenceStamp=Date.now()){
-  const todayKey=slaCentralDateKeyFromStamp(referenceStamp),d1Key=slaCentralOffsetDateKey(todayKey,-1);
-  const records=(metrics.slaCentralRecords||[]).map(record=>Object.assign({},record,{carrierNormalized:normalizeSlaCentralValue(record.carrier)},classifySlaCentralDelay(record,todayKey,referenceStamp)));
-  const serviceMap=new Map();records.forEach(record=>{if(!serviceMap.has(record.serviceNormalized))serviceMap.set(record.serviceNormalized,record.service)});
-  const services=Array.from(serviceMap,([normalized,label])=>({normalized,label})).sort((a,b)=>a.normalized.localeCompare(b.normalized,"pt-BR",{numeric:true}));
-  const carrierMap=new Map();records.forEach(record=>{if(!carrierMap.has(record.carrierNormalized))carrierMap.set(record.carrierNormalized,record.carrier)});
-  const carriers=Array.from(carrierMap,([normalized,label])=>({normalized,label})).sort((a,b)=>a.normalized.localeCompare(b.normalized,"pt-BR",{numeric:true}));
-  const areas={};
-  ["billing","shipping"].forEach(area=>{
-    const areaRecords=records.filter(record=>record.area===area),dates=new Map();
-    areaRecords.forEach(record=>{
-      if(!dates.has(record.importDateKey))dates.set(record.importDateKey,{key:record.importDateKey,label:record.importDateLabel,records:[],hours:new Map()});
-      const group=dates.get(record.importDateKey);group.records.push(record);
-      if(!group.hours.has(record.importHour))group.hours.set(record.importHour,[]);
-      group.hours.get(record.importHour).push(record);
-    });
-    areas[area]={records:areaRecords,dates:Array.from(dates.values()).sort((a,b)=>a.key.localeCompare(b.key))};
-  });
-  const delayed=records.filter(record=>record.delayed).sort((a,b)=>a.dueStamp-b.dueStamp),priorityToday=records.filter(record=>record.priorityToday&&!record.delayed).sort((a,b)=>a.dueStamp-b.dueStamp),automatic=records.filter(record=>record.automatic48h),urgent=[...records].sort((a,b)=>a.dueStamp-b.dueStamp)[0]||null;
-  return{todayKey,d1Key,referenceStamp,records,services,carriers,areas,delayed,priorityToday,automatic,urgent};
+  const minute=Math.floor(referenceStamp/60000);
+  if(centralModelCache?.metrics===metrics&&centralModelCache.minute===minute)return centralModelCache.model;
+  const model=centralViewEngine.aggregate(metrics.slaCentralRecords||[],referenceStamp);
+  model.dates={billing:new Map(),shipping:new Map()};
+  for(const r of model.records){if(!r.area)continue;const dates=model.dates[r.area];if(!dates.has(r.importDateKey))dates.set(r.importDateKey,new Set());if(r.importHour!=='')dates.get(r.importDateKey).add(r.importHour);}
+  model.ruleIds=[...new Set(model.records.map(r=>r.ruleId))];
+  model.oldest=new Map();for(const id of model.ruleIds){const records=model.get("rule:"+id),valid=records.filter(r=>Number.isFinite(r.dueStamp));model.oldest.set(id,valid.length?valid.reduce((a,b)=>a.dueStamp<b.dueStamp?a:b):null);}
+  centralModelCache={metrics,minute,model};return model;
 }
-
-function registerSlaCentralContext(records,title){
-  const id="sla_ctx_"+(++slaCentralUi.contextSequence);
-  slaCentralUi.contexts.set(id,{records:[...records],title});
-  return id;
-}
-
-function slaCentralCountMarkup(records,title){
-  if(!records.length)return"";
-  const delayed=records.filter(record=>record.delayed).length,dueToday=records.filter(record=>record.priorityToday&&!record.delayed).length,id=registerSlaCentralContext(records,title),signal=delayed?'<small>'+fmt(delayed)+' vencido'+(delayed===1?'':'s')+'</small>':dueToday?'<small>'+fmt(dueToday)+' para hoje</small>':'';
-  return '<button class="sla-count-button" data-sla-context="'+id+'"><strong>'+fmt(records.length)+'</strong>'+signal+'</button>';
-}
-
-function slaCentralRecordsFor(records,serviceNormalized){return serviceNormalized?records.filter(record=>record.serviceNormalized===serviceNormalized):records}
-function slaCentralRecordsForCarrier(records,carrierNormalized){return carrierNormalized?records.filter(record=>record.carrierNormalized===carrierNormalized):records}
-
+function registerSlaCentralContext(records,title){const id='sla_ctx_'+(++slaCentralUi.contextSequence);slaCentralUi.contexts.set(id,{records,title});return id;}
+function slaCentralCountMarkup(records,title,zero=false){return !records.length&&!zero?'':'<button class="sla-count-button" data-sla-context="'+registerSlaCentralContext(records,title)+'" aria-label="'+escapeHtml(title)+'"><strong>'+fmt(records.length)+'</strong></button>';}
+function centralRuleLabel(id){return centralViewEngine.rules.find(r=>r.id===id)?.label||'Sem regra';}
+function centralDate(stamp){return Number.isFinite(stamp)?new Date(stamp).toLocaleString('pt-BR',{timeZone:SLA_CENTRAL_TIME_ZONE}):'—';}
 function slaCentralTableHtml(area,model){
-  const areaData=model.areas[area],areaLabel=area==="billing"?"Faturamento":"Expedição";
-  if(!areaData.records.length)return'<div class="sla-central-empty">Nenhum pedido encontrado em '+areaLabel.toLowerCase()+' com Série 17 e serviço preenchido.</div>';
-  const carriers=model.carriers.filter(carrier=>areaData.records.some(record=>record.carrierNormalized===carrier.normalized));
-  const header=carriers.map(carrier=>'<th>'+escapeHtml(carrier.label)+'</th>').join("");
-  const rows=[];
-  areaData.dates.forEach(date=>{
-    const isToday=date.key===model.todayKey,isD1=date.key===model.d1Key,expanded=slaCentralUi.expanded[area].has(date.key),suffix=isToday?" — Hoje":isD1?" — D-1":"";
-    const delayed=date.records.filter(record=>record.delayed).length,dueToday=date.records.some(record=>record.priorityToday&&!record.delayed),rowClass=delayed?"sla-row-overdue":dueToday?"sla-row-alert":"";
-    const cells=carriers.map(carrier=>{const records=slaCentralRecordsForCarrier(date.records,carrier.normalized);return'<td>'+slaCentralCountMarkup(records,areaLabel+" · "+date.label+" · "+carrier.label)+'</td>'}).join("");
-    const toggle='<button class="sla-date-toggle" data-sla-toggle-area="'+area+'" data-sla-toggle-date="'+date.key+'" aria-expanded="'+expanded+'" aria-label="'+(expanded?"Recolher":"Expandir")+' horários de '+escapeHtml(date.label)+'" title="'+(expanded?"Recolher":"Expandir")+' horários">'+(expanded?"−":"+")+'</button>';
-    const scopeClass=isToday?"sla-scope-today":isD1?"sla-scope-d1":"sla-scope-older";
-    rows.push('<tr class="sla-date-row '+scopeClass+' '+rowClass+'"><th>'+toggle+'<span>'+escapeHtml(date.label+suffix)+'</span></th>'+cells+'<td class="sla-total-cell">'+slaCentralCountMarkup(date.records,areaLabel+" · total de "+date.label)+'</td></tr>');
-    if(expanded)Array.from(date.hours.entries()).sort((a,b)=>a[0]-b[0]).forEach(([hour,hourRecords])=>{
-      const hourDelayed=hourRecords.filter(record=>record.delayed).length,hourDueToday=hourRecords.some(record=>record.priorityToday&&!record.delayed),hourClass=hourDelayed?"sla-row-overdue":hourDueToday?"sla-row-alert":"";
-      const hourCells=carriers.map(carrier=>{const records=slaCentralRecordsForCarrier(hourRecords,carrier.normalized);return'<td>'+slaCentralCountMarkup(records,areaLabel+" · "+date.label+" · "+String(hour).padStart(2,"0")+"h · "+carrier.label)+'</td>'}).join("");
-      rows.push('<tr class="sla-hour-row '+scopeClass+' '+hourClass+'"><th><span>↳ '+String(hour).padStart(2,"0")+'h</span></th>'+hourCells+'<td class="sla-total-cell">'+slaCentralCountMarkup(hourRecords,areaLabel+" · "+date.label+" · "+String(hour).padStart(2,"0")+"h")+'</td></tr>');
-    });
-  });
-  const carrierTotals=carriers.map(carrier=>{const records=slaCentralRecordsForCarrier(areaData.records,carrier.normalized);return'<td>'+slaCentralCountMarkup(records,areaLabel+" · total de "+carrier.label)+'</td>'}).join("");
-  const footer='<tr class="sla-grand-total"><th>Total por transportadora</th>'+carrierTotals+'<td>'+slaCentralCountMarkup(areaData.records,areaLabel+" · total geral")+'</td></tr>';
-  return'<div class="sla-matrix-scroll"><table class="sla-central-matrix"><thead><tr><th>Dia/horário</th>'+header+'<th>Total</th></tr></thead><tbody>'+rows.join("")+'</tbody><tfoot>'+footer+'</tfoot></table></div>';
+  const get=(date='*',hour='*',rule='*')=>model.get(['matrix',area,date,hour,rule].join('|'));
+  if(!get().length)return '<div class="sla-central-empty">Nenhum pedido encontrado nesta etapa.</div>';
+  const ids=model.ruleIds.filter(id=>get('*','*',id).length),head=ids.map(id=>'<th>'+centralRuleLabel(id)+'</th>').join('');
+  const cells=(date,hour,title)=>ids.map(id=>'<td>'+slaCentralCountMarkup(get(date,hour,id),title+' · '+centralRuleLabel(id))+'</td>').join('')+'<td>'+slaCentralCountMarkup(get(date,hour),title+' · Total')+'</td>';
+  let rows='';
+  for(const [date,hours] of [...model.dates[area]].sort(([a],[b])=>a.localeCompare(b))){
+    const label=date?slaCentralDateLabel(date):'Data inválida',expanded=slaCentralUi.expanded[area].has(date),recent=date===model.todayKey||date===model.d1Key;
+    rows+='<tr class="sla-date-row"><th>'+(hours.size?'<button class="sla-date-toggle" data-sla-toggle-area="'+area+'" data-sla-toggle-date="'+date+'" aria-expanded="'+expanded+'" aria-label="Expandir ou recolher '+label+'">'+(expanded?'−':'+')+'</button>':'')+label+(recent?(date===model.todayKey?' · Hoje':' · D-1'):'')+'</th>'+cells(date,'*',label)+'</tr>';
+    if(expanded)for(const hour of [...hours].sort((a,b)=>a-b))rows+='<tr class="sla-hour-row"><th>↳ '+String(hour).padStart(2,'0')+'h</th>'+cells(date,String(hour),label+' · '+hour+'h')+'</tr>';
+  }
+  return '<div class="sla-matrix-scroll"><table class="sla-central-matrix"><thead><tr><th>Importação</th>'+head+'<th>Total</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><th>Total da etapa</th>'+cells('*','*',area==='billing'?'Faturamento':'Expedição')+'</tr></tfoot></table></div>';
 }
-
-function renderSlaCentralDiagnostics(metrics){
-  const diagnostics=metrics.slaCentralDiagnostics||{},messages=[];
-  if((diagnostics.missingColumns||[]).length)messages.push('<div class="sla-diagnostic error"><strong>Colunas obrigatórias não encontradas</strong><span>'+escapeHtml(diagnostics.missingColumns.join(", "))+'</span></div>');
-  if(diagnostics.invalidDates)messages.push('<div class="sla-diagnostic warning"><strong>Datas não interpretadas</strong><span>'+fmt(diagnostics.invalidDates)+' registro(s) ignorado(s) porque “Importado em” não contém data e hora válidas.</span></div>');
-  const unknown=Object.values(diagnostics.unknownStatuses||{});
-  if(unknown.length)messages.push('<div class="sla-diagnostic info"><strong>Status não classificados</strong><span>'+unknown.sort((a,b)=>b.count-a.count).map(item=>escapeHtml(item.label)+" ("+fmt(item.count)+")").join(" · ")+'</span></div>');
-  $("#sla-central-diagnostics").innerHTML=messages.join("");
+function centralOperationalTable(model,group){
+  const rules=centralViewEngine.rules.filter(r=>r.group===group),classes=['ATRASADO','URGENTE','VENCE_HOJE','DENTRO_DO_PRAZO','PROXIMO_CICLO','SEM_REGRA','DATA_INVALIDA'];
+  const rows=rules.map(rule=>{
+    const records=model.get('rule:'+rule.id),oldest=model.oldest.get(rule.id);
+    return '<tr><th>'+escapeHtml(rule.label)+'<small class="central-rule-note">Corte '+rule.cutoff+' · '+(rule.days?'D+'+rule.days:'Mesmo ciclo')+' · '+rule.end+'</small></th>'+classes.map(c=>'<td>'+slaCentralCountMarkup(model.get('rule:'+rule.id+'|class:'+c),rule.label+' · '+centralLabels[c])+'</td>').join('')+['billing','shipping'].map(area=>'<td>'+slaCentralCountMarkup(model.get('rule:'+rule.id+'|area:'+area),rule.label+' · '+(area==='billing'?'Faturamento':'Expedição'))+'</td>').join('')+'<td>'+slaCentralCountMarkup(records,rule.label+' · Total')+'</td><td>'+(oldest?'<button class="sla-count-button" data-sla-context="'+registerSlaCentralContext([oldest],rule.label+' · Prazo mais antigo')+'">'+escapeHtml(centralDate(oldest.dueStamp))+'</button>':'—')+'</td></tr>';
+  }).join('');
+  return '<h3>'+group+'</h3><div class="sla-matrix-scroll"><table class="sla-central-matrix"><thead><tr><th>Regra</th>'+classes.map(c=>'<th>'+centralLabels[c]+'</th>').join('')+'<th>Fat.</th><th>Exp.</th><th>Total</th><th>Limite mais antigo</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
-
-function renderSlaNormalBreakdown(model){
-  if(!model.records.length){$("#sla-normal-breakdown").innerHTML='<div class="sla-central-empty compact">Importe o CSV para visualizar as prioridades.</div>';return}
-  const statusGroups=[{label:"SLA vencido",records:model.delayed},{label:"Prioridade de hoje",records:model.priorityToday},{label:"Regra automática 48h",records:model.automatic}];
-  const byStatus=statusGroups.map(group=>{const id=registerSlaCentralContext(group.records,group.label);return'<button data-sla-context="'+id+'" '+(group.records.length?'':'disabled')+'><span>'+group.label+'</span><strong>'+fmt(group.records.length)+'</strong></button>'}).join("");
-  const urgent=model.records.filter(record=>record.delayed||record.priorityToday),byService=model.services.map(service=>{const records=urgent.filter(record=>record.serviceNormalized===service.normalized);if(!records.length)return"";const id=registerSlaCentralContext(records,"Prioridade SLA · "+service.label);return'<button data-sla-context="'+id+'"><span>'+escapeHtml(service.label)+'</span><strong>'+fmt(records.length)+'</strong></button>'}).join("")||'<span class="sla-breakdown-empty">Nenhum serviço vencido ou com prioridade para hoje.</span>';
-  $("#sla-normal-breakdown").innerHTML='<div class="sla-breakdown-section"><small>Por condição</small><div>'+byStatus+'</div></div><div class="sla-breakdown-section"><small>Serviços urgentes</small><div>'+byService+'</div></div>';
-}
-
-function setSlaCentralCardContext(cardName,records,title){
-  const card=document.querySelector('[data-sla-card="'+cardName+'"]');if(!card)return;
-  card.dataset.slaContext=records.length?registerSlaCentralContext(records,title):"";
-  card.disabled=!records.length;
-}
-
 function renderSlaCentral(){
-  const metrics=currentMetrics,model=buildSlaCentralModel(metrics),token=metrics.fileName+"|"+metrics.importedAt+"|"+model.todayKey;
-  if(token!==slaCentralUi.importToken){slaCentralUi.importToken=token;slaCentralUi.expanded={billing:new Set([model.d1Key,model.todayKey]),shipping:new Set([model.d1Key,model.todayKey])}}
+  if(!document.querySelector("#page-faturamento"))return;
+  const metrics=currentMetrics,model=buildSlaCentralModel(metrics),fresh=slaCentralUi.metrics!==metrics;
+  if(fresh||slaCentralUi.todayKey!==model.todayKey){slaCentralUi.expanded={billing:new Set([model.todayKey,model.d1Key]),shipping:new Set([model.todayKey,model.d1Key])};slaCentralUi.metrics=metrics;slaCentralUi.todayKey=model.todayKey;if(fresh&&slaCentralUi.drawerOpen)closeSlaDrawer();}
   slaCentralUi.model=model;slaCentralUi.contexts.clear();slaCentralUi.contextSequence=0;
-  $("#sla-central-updated").textContent=metrics.fileName?"CSV "+metrics.fileName+" · atualizado às "+metrics.importedAt+" · fuso "+SLA_CENTRAL_TIME_ZONE:"Importe o CSV para calcular os pedidos pendentes";
-  renderSlaCentralDiagnostics(metrics);
-  $("#sla-central-billing").textContent=fmt(model.areas.billing.records.length);$("#sla-central-shipping").textContent=fmt(model.areas.shipping.records.length);$("#sla-central-delayed").textContent=fmt(model.delayed.length);$("#sla-central-previous").textContent=fmt(model.priorityToday.length);$("#sla-central-today-before").textContent=fmt(model.automatic.length);
-  $("#sla-central-oldest").textContent=model.urgent?new Date(model.urgent.dueStamp).toLocaleString("pt-BR",{timeZone:SLA_CENTRAL_TIME_ZONE,day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";$("#sla-central-oldest-wait").textContent=model.urgent?(model.urgent.delayed?slaCentralPendingDuration(model.referenceStamp-model.urgent.dueStamp)+" em atraso":humanDuration(model.urgent.dueStamp-model.referenceStamp)):"Nenhum pedido pendente";
-  setSlaCentralCardContext("billing",model.areas.billing.records,"Pendentes de faturamento");setSlaCentralCardContext("shipping",model.areas.shipping.records,"Pendentes de expedição");setSlaCentralCardContext("delayed",model.delayed,"Pedidos com SLA vencido");setSlaCentralCardContext("previous",model.priorityToday,"Prioridade de hoje");setSlaCentralCardContext("today-before",model.automatic,"Serviços com regra automática de 48h");setSlaCentralCardContext("oldest",model.urgent?[model.urgent]:[],"Pedido com prazo mais urgente");
-  renderSlaNormalBreakdown(model);
-  const missing=(metrics.slaCentralDiagnostics?.missingColumns||[]).length;
-  const state=!metrics.fileName?'<div class="sla-central-empty">Nenhum CSV importado.</div>':missing?'<div class="sla-central-empty error">Não foi possível montar a tabela. Verifique as colunas obrigatórias informadas acima.</div>':null;
-  $("#sla-billing-table").innerHTML=state||slaCentralTableHtml("billing",model);$("#sla-shipping-table").innerHTML=state||slaCentralTableHtml("shipping",model);
+  const invalid=model.get('class:DATA_INVALIDA'),unknown=model.get('class:SEM_REGRA');
+  $('#sla-central-updated').textContent=metrics.fileName?metrics.fileName+' · Última importação: '+(metrics.slaCentralImportedAt?centralDate(Date.parse(metrics.slaCentralImportedAt)):metrics.importedAt)+' · America/Sao_Paulo':'Nenhum CSV importado';
+  const cards=[['Atrasados','class:ATRASADO','red'],['Urgentes','class:URGENTE','orange'],['Vencem hoje','class:VENCE_HOJE','amber'],['Dentro do prazo','class:DENTRO_DO_PRAZO','blue'],['Pendentes de faturamento','area:billing','slate'],['Pendentes de expedição','area:shipping','slate'],['Sem regra','class:SEM_REGRA','slate']];
+  document.querySelector('#page-faturamento .sla-central-kpis').innerHTML=cards.map(([label,key,tone])=>'<button class="card sla-central-kpi '+tone+'" data-sla-context="'+registerSlaCentralContext(model.get(key),label)+'"><small>'+label+'</small><strong>'+fmt(model.get(key).length)+'</strong><span>Pedidos únicos</span></button>').join('');
+  const missing=metrics.slaCentralDiagnostics?.missingColumns||[];
+  $('#sla-central-diagnostics').innerHTML='<div class="central-summary">'+slaCentralCountMarkup(model.records,'Todos os pedidos analisados',true)+' pedidos analisados · '+slaCentralCountMarkup([...invalid,...unknown],'Inválidos ou sem regra',true)+' inválidos ou sem regra · '+slaCentralCountMarkup(model.get('class:PROXIMO_CICLO'),'Próximo ciclo',true)+' no próximo ciclo</div>'+(missing.length?'<div class="sla-diagnostic error">Colunas obrigatórias ausentes: '+escapeHtml(missing.join(', '))+'</div>':'')+'<details class="central-diagnostics"><summary>Calendário e diagnóstico dos dados</summary><p>Calendário provisório: segunda a sexta; feriados e exceções configuráveis em sla-engine.js. Validar com a operação.</p><p>Linhas duplicadas: '+fmt(metrics.slaCentralDiagnostics?.duplicateRows||0)+'. '+slaCentralCountMarkup(invalid,'Datas inválidas',true)+' datas inválidas.</p>'+Object.values(metrics.slaCentralDiagnostics?.unknownStatuses||{}).map(s=>'<p>Status não reconhecido: '+escapeHtml(s.label)+' ('+s.count+')</p>').join('')+slaCentralCountMarkup(model.get('area:'),'Pedidos com status não reconhecido',true)+'</details>';
+  $('#sla-normal-breakdown').innerHTML=centralOperationalTable(model,'B2C Convencional')+centralOperationalTable(model,'Marketplace');
+  const empty=!metrics.fileName?'Nenhum CSV importado.':missing.length?'Corrija as colunas obrigatórias informadas acima.':null;
+  $('#sla-billing-table').innerHTML=empty?'<div class="sla-central-empty">'+empty+'</div>':slaCentralTableHtml('billing',model);
+  $('#sla-shipping-table').innerHTML=empty?'<div class="sla-central-empty">'+empty+'</div>':slaCentralTableHtml('shipping',model);
 }
-
-function slaCentralPendingDuration(milliseconds){
-  const totalMinutes=Math.max(0,Math.floor(milliseconds/60000)),days=Math.floor(totalMinutes/1440),hours=Math.floor(totalMinutes%1440/60),minutes=totalMinutes%60;
-  return[days?days+"d":"",hours?hours+"h":"",(!days||!hours)&&minutes?minutes+"min":""].filter(Boolean).join(" ")||"0min";
-}
-
-function slaCentralFilterOptions(records,field,label){
-  const values=Array.from(new Map(records.map(record=>[String(record[field]),record[field]])).values()).filter(value=>value!==""&&value!=null).sort((a,b)=>String(a).localeCompare(String(b),"pt-BR",{numeric:true}));
-  return'<option value="">'+label+'</option>'+values.map(value=>'<option value="'+escapeHtml(value)+'">'+escapeHtml(field==="importHour"?String(value).padStart(2,"0")+"h":value)+'</option>').join("");
-}
-
+function slaCentralPendingDuration(ms){if(!Number.isFinite(ms))return '—';const m=Math.max(0,Math.floor(Math.abs(ms)/60000));return Math.floor(m/1440)+'d '+Math.floor(m%1440/60)+'h '+m%60+'min';}
+function slaCentralFilterOptions(records,field,label){return '<option value="">'+label+'</option>'+[...new Set(records.map(r=>r[field]).filter(v=>v!==''&&v!=null))].sort().map(v=>'<option value="'+escapeHtml(v)+'">'+escapeHtml(centralLabels[v]||({billing:'Pendente de faturamento',shipping:'Pendente de expedição'}[v])||v)+'</option>').join('');}
 function openSlaCentralDrawer(records,title){
-  if(!records.length)return;
-  slaCentralUi.drawerOpen=true;slaCentralUi.drawerRecords=[...records].sort((a,b)=>a.importedStamp-b.importedStamp);slaCentralUi.drawerTitle=title;slaCentralUi.drawerLimit=200;
-  $("#sla-drawer-kicker").textContent="DETALHAMENTO · EXPEDIÇÃO PEDIDOS";$("#sla-drawer-title").textContent=title;$("#sla-drawer-subtitle").textContent=fmt(records.length)+" pedido(s) único(s)";
-  $("#sla-drawer-body").innerHTML='<div class="sla-detail-toolbar"><div class="sla-field span-2"><label>Pesquisa</label><input id="sla-detail-search" placeholder="Nota Fiscal ou Pedido de Venda"></div><div class="sla-field"><label>Data</label><input type="date" id="sla-detail-date"></div><div class="sla-field"><label>Horário</label><select id="sla-detail-hour">'+slaCentralFilterOptions(records,"importHour","Todos")+'</select></div><div class="sla-field"><label>Status</label><select id="sla-detail-status">'+slaCentralFilterOptions(records,"status","Todos")+'</select></div><div class="sla-field"><label>Serviço</label><select id="sla-detail-service">'+slaCentralFilterOptions(records,"service","Todos")+'</select></div><div class="sla-field"><label>Prazo</label><select id="sla-detail-delay"><option value="">Todos</option><option value="delayed">Atrasados</option><option value="on-time">Dentro do prazo</option></select></div><button class="btn secondary" id="sla-detail-export">Exportar CSV</button></div><div id="sla-detail-results"></div>';
-  renderSlaCentralDrawerResults();$("#sla-drawer").classList.add("show");$("#sla-drawer-backdrop").classList.add("show");
+  slaCentralUi.drawerOpen=true;slaCentralUi.drawerRecords=records;slaCentralUi.drawerTitle=title;slaCentralUi.drawerLimit=200;
+  slaCentralUi.filterIndexes=new Map();for(const r of records)for(const field of ['classification','area','ruleLabel','status','importDateKey']){const key=field+'|'+r[field];if(!slaCentralUi.filterIndexes.has(key))slaCentralUi.filterIndexes.set(key,[]);slaCentralUi.filterIndexes.get(key).push(r);}
+  $('#sla-drawer-kicker').textContent='CENTRAL SLA · DETALHAMENTO';$('#sla-drawer-title').textContent=title;
+  $('#sla-drawer-body').innerHTML='<div class="sla-detail-toolbar"><div class="sla-field span-2"><label for="sla-detail-search">Nota Fiscal ou Pedido de Venda</label><input id="sla-detail-search" placeholder="Pesquisar pedido"></div><div class="sla-field"><label for="sla-detail-date">Data de importação</label><input type="date" id="sla-detail-date"></div>'+[['classification','delay','Situação'],['area','area','Etapa'],['ruleLabel','rule','Regra'],['status','status','Status']].map(([field,id,label])=>'<div class="sla-field"><label for="sla-detail-'+id+'">'+label+'</label><select id="sla-detail-'+id+'" data-central-field="'+field+'">'+slaCentralFilterOptions(records,field,'Todos')+'</select></div>').join('')+'<button class="btn secondary" id="sla-detail-export">Exportar CSV</button></div><div id="sla-detail-results"></div>';
+  $('#sla-drawer-body').querySelectorAll('select').forEach(select=>select.addEventListener('change',()=>{slaCentralUi.drawerLimit=200;renderSlaCentralDrawerResults();}));
+  $('#sla-drawer-body').querySelectorAll('input').forEach(input=>input.addEventListener('input',()=>{slaCentralUi.drawerLimit=200;}));
+  renderSlaCentralDrawerResults();$('#sla-drawer').classList.add('show');$('#sla-drawer-backdrop').classList.add('show');
 }
-
 function filteredSlaCentralDrawerRecords(){
-  const query=normalizeSlaCentralValue($("#sla-detail-search")?.value||""),date=$("#sla-detail-date")?.value||"",hour=$("#sla-detail-hour")?.value||"",status=$("#sla-detail-status")?.value||"",service=$("#sla-detail-service")?.value||"",delay=$("#sla-detail-delay")?.value||"";
-  return slaCentralUi.drawerRecords.filter(record=>{
-    if(query&&!normalizeSlaCentralValue(record.invoice+" "+record.order).includes(query))return false;
-    if(date&&record.importDateKey!==date)return false;if(hour!==""&&String(record.importHour)!==hour)return false;if(status&&record.status!==status)return false;if(service&&record.service!==service)return false;
-    if(delay==="delayed"&&!record.delayed)return false;if(delay==="on-time"&&record.delayed)return false;return true;
-  });
+  const query=centralViewEngine.normalize($('#sla-detail-search')?.value||''),date=$('#sla-detail-date')?.value;
+  const filters=[...document.querySelectorAll('[data-central-field]')].filter(e=>e.value).map(e=>[e.dataset.centralField,e.value]);if(date)filters.push(['importDateKey',date]);
+  const candidates=filters.map(([k,v])=>slaCentralUi.filterIndexes.get(k+'|'+v)||[]).sort((a,b)=>a.length-b.length)[0]||slaCentralUi.drawerRecords;
+  return candidates.filter(r=>filters.every(([k,v])=>r[k]===v)&&(!query||r.search.includes(query)));
 }
-
-function slaCentralDetailRecordHtml(record){
-  const condition=record.delayed?"SLA vencido":record.priorityToday?"Prioridade de hoje":"Dentro do prazo",deadline=Number.isFinite(record.dueStamp)?new Date(record.dueStamp).toLocaleString("pt-BR",{timeZone:SLA_CENTRAL_TIME_ZONE}):"—";
-  const fields=[["Nota Fiscal",record.invoice||"—"],["Pedido de Venda",record.order],["Importado em",record.importedRaw],["Tempo pendente",slaCentralPendingDuration(Date.now()-record.importedStamp)],["Status atual",record.status],["Etapa",record.area==="billing"?"Faturamento":"Expedição"],["Serviço",record.service],["Transportadora",record.carrier],["Perfil aplicado",record.profileName],["Limite de importação",record.cutoff||"Não se aplica"],["Limite de expedição",record.deadlineTime||"48h após importação"],["Prazo base",record.dispatchDay==="next_day"?"Dia seguinte":record.dispatchDay==="same_day"?"Mesmo dia":"Regra automática"],["Prazo calculado",deadline],["Carga",record.load],["Onda",record.wave||record.waveId||"—"],["Volumes",fmt(record.volumes)],["Peças",fmt(record.products)],["Usuário responsável",record.responsible||"Não informado"],["Condição",condition],["Motivo",record.delayReason]];
-  return'<article class="sla-detail-record '+(record.delayed?"delayed":"")+'"><div class="sla-detail-record-head"><span><strong>'+escapeHtml(record.invoice?"NF "+record.invoice:"Pedido "+record.order)+'</strong>'+(record.identifierFallback?'<small>Pedido de Venda usado como identificador</small>':'')+'</span><b class="'+(record.delayed?"bad":"good")+'">'+condition+'</b></div><div class="sla-detail-grid">'+fields.map(field=>'<div><small>'+escapeHtml(field[0])+'</small><strong>'+escapeHtml(field[1])+'</strong></div>').join("")+'</div></article>';
+function slaCentralDetailRecordHtml(r){
+  const condition=centralLabels[r.classification],fields=[['Nota Fiscal',r.invoice],['Pedido de Venda',r.order],['Identificador utilizado',r.identifier],['Importado em',r.importedRaw],['Data/hora limite',centralDate(r.dueStamp)],[r.delayed?'Tempo de atraso':'Tempo restante',slaCentralPendingDuration(r.dueStamp-slaCentralUi.model.referenceStamp)],['Regra',r.ruleLabel],['Motivo',r.delayReason],['Status',r.status],['Etapa',r.area==='billing'?'Pendente de faturamento':r.area==='shipping'?'Pendente de expedição':'Status não reconhecido'],['Serviço',r.service],['Modalidade',r.modality],['Marketplace',r.marketplace],['Transportadora',r.carrier],['Carga',r.load],['Onda',r.wave||r.waveId],['Volumes',r.volumes],['Peças',r.products],['Responsável',r.responsible]];
+  return '<article class="sla-detail-record '+(r.delayed?'delayed':'')+'"><div class="sla-detail-record-head"><span><strong>'+escapeHtml(r.identifier)+'</strong>'+(r.identifierFallback?'<small>Pedido de Venda usado como identificador'+(r.missingIdentifier?' · ausente':'')+'</small>':'')+'</span><b>'+condition+'</b></div><div class="sla-detail-grid">'+fields.map(([label,value])=>'<div><small>'+label+'</small><strong>'+escapeHtml(value||'—')+'</strong></div>').join('')+'</div></article>';
 }
-
 function renderSlaCentralDrawerResults(){
-  if(!slaCentralUi.drawerOpen||!$("#sla-detail-results"))return;
-  const records=filteredSlaCentralDrawerRecords();slaCentralUi.filteredDrawerRecords=records;const visible=records.slice(0,slaCentralUi.drawerLimit);
-  $("#sla-drawer-subtitle").textContent=fmt(records.length)+" de "+fmt(slaCentralUi.drawerRecords.length)+" pedido(s)";
-  $("#sla-detail-results").innerHTML=visible.length?visible.map(slaCentralDetailRecordHtml).join("")+(visible.length<records.length?'<button class="btn secondary sla-detail-more" id="sla-detail-more">Mostrar mais '+fmt(Math.min(200,records.length-visible.length))+'</button>':''):'<div class="sla-central-empty">Nenhum pedido corresponde aos filtros do detalhamento.</div>';
+  if(!slaCentralUi.drawerOpen)return;
+  const records=filteredSlaCentralDrawerRecords();slaCentralUi.filteredDrawerRecords=records;
+  const start=Math.max(0,slaCentralUi.drawerLimit-200),visible=records.slice(start,start+200);
+  $('#sla-drawer-subtitle').textContent=fmt(records.length)+' de '+fmt(slaCentralUi.drawerRecords.length)+' pedidos · página '+(start/200+1);
+  $('#sla-detail-results').innerHTML=visible.map(slaCentralDetailRecordHtml).join('')+(visible.length?'':'<p>Nenhum pedido corresponde aos filtros.</p>')+(start?'<button class="btn secondary" id="central-prev">Página anterior</button>':'')+(start+200<records.length?'<button class="btn secondary" id="sla-detail-more">Próxima página</button>':'');
+  $('#central-prev')?.addEventListener('click',()=>{slaCentralUi.drawerLimit-=200;renderSlaCentralDrawerResults();});
 }
-
 function exportSlaCentralDetailCsv(){
-  const rows=[["NOTA FISCAL","PEDIDO DE VENDA","IDENTIFICADOR ALTERNATIVO","IMPORTADO EM","TEMPO PENDENTE","STATUS","ETAPA","SERVIÇO DA TRANSPORTADORA","TRANSPORTADORA","PERFIL SLA","LIMITE IMPORTAÇÃO","LIMITE EXPEDIÇÃO","PRAZO BASE","PRAZO CALCULADO","CARGA","ONDA","VOLUMES","PEÇAS","USUÁRIO RESPONSÁVEL","SLA VENCIDO","MOTIVO"]];
-  slaCentralUi.filteredDrawerRecords.forEach(record=>rows.push([record.invoice,record.order,record.identifierFallback?"SIM":"NÃO",record.importedRaw,slaCentralPendingDuration(Date.now()-record.importedStamp),record.status,record.area==="billing"?"Faturamento":"Expedição",record.service,record.carrier,record.profileName,record.cutoff||"NÃO SE APLICA",record.deadlineTime||"48H",record.dispatchDay==="next_day"?"DIA SEGUINTE":record.dispatchDay==="same_day"?"MESMO DIA":"AUTOMÁTICO",new Date(record.dueStamp).toLocaleString("pt-BR",{timeZone:SLA_CENTRAL_TIME_ZONE}),record.load,record.wave||record.waveId,record.volumes,record.products,record.responsible,record.delayed?"SIM":"NÃO",record.delayReason]));
-  const content=rows.map(row=>row.map(csvCell).join(";")).join("\n"),blob=new Blob(["\ufeff"+content],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="expedicao-pedidos-detalhamento-"+new Date().toISOString().slice(0,10)+".csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast("Detalhamento de Expedição Pedidos exportado em CSV.");
+  const fields=['invoice','order','identifier','identifierFallback','importedRaw','classification','ruleLabel','area','status','service','modality','marketplace','carrier','load','wave','volumes','products','responsible','delayReason'];
+  const rows=[fields.concat('Data/hora limite'),...slaCentralUi.filteredDrawerRecords.map(r=>fields.map(f=>r[f]).concat(centralDate(r.dueStamp)))];
+  const safe=v=>csvCell(/^[=+@\-]/.test(String(v))?"'"+v:v),blob=new Blob(['\ufeff'+rows.map(row=>row.map(safe).join(';')).join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='central-sla-detalhamento.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
 const conferenceUi={details:[],title:""};
 function conferenceBucketByKey(key,segment){const data=segment==="b2c"?currentMetrics.b2cHourly:currentMetrics.b2bHourly;return data.find(item=>item.label+"||"+item.descriptor===key)}
 function conferenceTotalByCarrier(carrier,segment){const data=segment==="b2c"?currentMetrics.b2cHourly:currentMetrics.b2bHourly,matching=data.filter(item=>item.descriptor===carrier),orders=new Map();matching.forEach(bucket=>bucket.details.forEach(item=>orders.set(item.order,item)));const details=Array.from(orders.values());return{label:"Todos os horários",descriptor:carrier,orders:details.length,volumes:details.reduce((sum,item)=>sum+item.volumes,0),details}}
-function openConferenceDetails(bucket,segment){if(!bucket||!bucket.details.length)return;conferenceUi.details=bucket.details.slice().sort((a,b)=>String(a.invoice).localeCompare(String(b.invoice),"pt-BR",{numeric:true}));conferenceUi.title=(segment==="b2c"?"Conferência B2C":"Conferência B2B")+" · "+bucket.label+" · "+carrierDisplayName(bucket.descriptor);$("#sla-drawer-kicker").textContent="PEDIDOS PENDENTES DE CONFERÊNCIA";$("#sla-drawer-title").textContent=conferenceUi.title;$("#sla-drawer-subtitle").textContent=fmt(conferenceUi.details.length)+" pedidos · "+fmt(bucket.volumes)+" volumes";$("#sla-drawer-body").innerHTML='<div class="drawer-export-bar"><button class="btn secondary" id="conference-export-csv">Exportar CSV</button><button class="btn primary" id="conference-export-image">Exportar imagem</button></div><div style="overflow:auto"><div class="conference-detail-table"><div class="conference-detail-head"><span>Nota Fiscal</span><span>Pedido de Venda</span><span>Classificação</span><span>Cód. Serviço</span><span>Transportadora</span><span>Pesado em</span><span>Usuário Pesagem</span><span>Volumes</span></div>'+conferenceUi.details.map(item=>'<div class="conference-detail-row"><strong>'+escapeHtml(item.invoice||"—")+'</strong><span>'+escapeHtml(item.order||"—")+'</span><span>'+escapeHtml(item.orderClassification||"—")+'</span><span>'+escapeHtml(item.serviceCode||"—")+'</span><span>'+escapeHtml(item.carrier||"—")+'</span><span>'+escapeHtml(item.weighedAt||"—")+'</span><span>'+escapeHtml(item.weighingUser||"—")+'</span><strong>'+fmt(item.volumes)+'</strong></div>').join('')+'</div></div>';$("#sla-drawer").classList.add("show");$("#sla-drawer-backdrop").classList.add("show");$("#conference-export-csv").addEventListener("click",exportConferenceCsv);$("#conference-export-image").addEventListener("click",exportConferenceImage)}
-function conferenceRows(){return [["NOTA FISCAL","PEDIDO DE VENDA","CLASSIFICAÇÃO DO PEDIDO","COD DE SERVIÇO","TRANSPORTADORA","PESADO EM","USUARIO DE PESAGEM","VOLUMES"],...conferenceUi.details.map(item=>[item.invoice,item.order,item.orderClassification,item.serviceCode,item.carrier,item.weighedAt,item.weighingUser,item.volumes])]}
+function openConferenceDetails(bucket,segment){if(!bucket||!bucket.details.length)return;conferenceUi.details=bucket.details.slice().sort((a,b)=>String(a.invoice).localeCompare(String(b.invoice),"pt-BR",{numeric:true}));conferenceUi.title=(segment==="b2c"?"Conferência B2C":"Conferência B2B")+" · "+bucket.label+" · "+carrierDisplayName(bucket.descriptor);$("#sla-drawer-kicker").textContent="PEDIDOS PENDENTES DE CONFERÊNCIA";$("#sla-drawer-title").textContent=conferenceUi.title;$("#sla-drawer-subtitle").textContent=fmt(conferenceUi.details.length)+" pedidos · "+fmt(bucket.volumes)+" volumes";$("#sla-drawer-body").innerHTML='<div class="drawer-export-bar"><button class="btn secondary" id="conference-export-csv">Exportar CSV</button><button class="btn primary" id="conference-export-image">Exportar imagem</button></div><div style="overflow:auto"><div class="conference-detail-table"><div class="conference-detail-head"><span>Nota Fiscal</span><span>Pedido de Venda</span><span>Classificação</span><span>Cód. Serviço</span><span>Transportadora</span><span>Conferido em</span><span>Usuário Pesagem</span><span>Volumes</span></div>'+conferenceUi.details.map(item=>'<div class="conference-detail-row"><strong>'+escapeHtml(item.invoice||"—")+'</strong><span>'+escapeHtml(item.order||"—")+'</span><span>'+escapeHtml(item.orderClassification||"—")+'</span><span>'+escapeHtml(item.serviceCode||"—")+'</span><span>'+escapeHtml(item.carrier||"—")+'</span><span>'+escapeHtml(item.conferenceAt||"—")+'</span><span>'+escapeHtml(item.weighingUser||"—")+'</span><strong>'+fmt(item.volumes)+'</strong></div>').join('')+'</div></div>';$("#sla-drawer").classList.add("show");$("#sla-drawer-backdrop").classList.add("show");$("#conference-export-csv").addEventListener("click",exportConferenceCsv);$("#conference-export-image").addEventListener("click",exportConferenceImage)}
+function conferenceRows(){return [["NOTA FISCAL","PEDIDO DE VENDA","CLASSIFICAÇÃO DO PEDIDO","COD DE SERVIÇO","TRANSPORTADORA","CONFERIDO EM","USUARIO DE PESAGEM","VOLUMES"],...conferenceUi.details.map(item=>[item.invoice,item.order,item.orderClassification,item.serviceCode,item.carrier,item.conferenceAt,item.weighingUser,item.volumes])]}
 function csvCell(value){const text=String(value==null?"":value);return /[;"\n]/.test(text)?'"'+text.replace(/"/g,'""')+'"':text}
 function exportConferenceCsv(){const content=conferenceRows().map(row=>row.map(csvCell).join(";")).join("\n"),blob=new Blob(["\ufeff"+content],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="pendentes-conferencia-"+new Date().toISOString().slice(0,10)+".csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast("Lista de conferência exportada em CSV.")}
-function exportConferenceImage(){
+async function exportConferenceImage(){
+  await window.CarrierBrands.ready();
   const rows=conferenceRows(),canvas=document.createElement("canvas"),rowHeight=44;canvas.width=1800;canvas.height=Math.max(500,210+rows.length*rowHeight);
   const context=canvas.getContext("2d");if(!context)return showToast("Não foi possível gerar a imagem.",true);
   const dark=document.body.dataset.theme==="dark",bg=dark?"#0b1220":"#f4f6f9",panel=dark?"#111b2e":"#fff",ink=dark?"#e8eef9":"#172033",muted=dark?"#91a0b5":"#738095",line=dark?"#29364a":"#e2e7ee";
   const columns=[50,200,360,590,750,1100,1320,1680],widths=[135,140,210,140,330,200,330,70];
   context.fillStyle=bg;context.fillRect(0,0,canvas.width,canvas.height);
-  const text=(value,x,y,size,color,weight)=>{context.fillStyle=color;context.font=(weight||500)+" "+size+'px "Segoe UI",Arial';context.textBaseline="middle";context.fillText(String(value||"—"),x,y)};
+  const text=(value,x,y,size,color,weight)=>{context.fillStyle=deliveryColor(value,color);context.font=(weight||500)+" "+size+'px "Segoe UI",Arial';context.textBaseline="middle";context.fillText(String(value||"—"),window.CarrierBrands.draw(context,value,x,y,size),y)};
   text("LUFT · PENDENTES DE CONFERÊNCIA",50,48,18,"#3b82f6",800);text(conferenceUi.title,50,90,26,ink,800);text(fmt(conferenceUi.details.length)+" pedidos",50,125,14,muted,600);
   rows.forEach((row,index)=>{const y=165+index*rowHeight;context.fillStyle=index===0?(dark?"#17243a":"#eaf0f8"):(index%2?panel:bg);context.fillRect(35,y-rowHeight/2+2,1730,rowHeight-4);row.forEach((value,column)=>{let result=String(value||"—");context.font=(index===0?800:600)+" "+(index===0?10:11)+'px "Segoe UI",Arial';while(result.length>3&&context.measureText(result).width>widths[column])result=result.slice(0,-1);if(result!==String(value||"—"))result=result.slice(0,-1)+"…";text(result,columns[column],y,index===0?10:11,index===0?muted:ink,index===0?800:600)});context.strokeStyle=line;context.beginPath();context.moveTo(35,y+rowHeight/2);context.lineTo(1765,y+rowHeight/2);context.stroke()});
   canvas.toBlob(blob=>{if(!blob)return showToast("Não foi possível gerar a imagem.",true);const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="pendentes-conferencia-"+new Date().toISOString().slice(0,10)+".png";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast("Lista de conferência exportada como imagem.")},"image/png")
@@ -1204,15 +1130,7 @@ function allUpcomingPickups(afterDate){const result=[];Object.keys(pickupSchedul
 function isSpecialSeries14Alert(record){const carrier=normalizeHeader(record.carrier),special=carrier.includes("fl brasil")||carrier.includes("viviane")||carrier.includes("patrus");return special&&record.series==="14"&&record.importedStamp&&Date.now()-record.importedStamp>3*86400000}
 function pendingPickupFlowGroups(){const groups=new Map();enrichedSlaRecords().forEach(record=>{if(record.load!=="Sem carga"||normalizeHeader(record.status).includes("coleta iniciada")||(!record.slaApplicable&&!isSpecialSeries14Alert(record)))return;const key=normalizeHeader(record.carrier);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(record)});return groups}
 function pendingPickupFlow(carrier,groups){return (groups||pendingPickupFlowGroups()).get(normalizeHeader(carrier))||[]}
-function renderPickupDashboard(){
-  const now=new Date(),flowGroups=pendingPickupFlowGroups(),upcoming=allUpcomingPickups(now),next=upcoming[0],pending=next?pendingPickupFlow(next.carrier,flowGroups):[];
-  const nextHtml=next?'<article class="card pickup-next" data-next-pickup="1" role="button" tabindex="0"><div class="pickup-next-icon">🚚</div><div><small>Próxima transportadora · clique para detalhar</small><strong>'+escapeHtml(next.carrier)+'</strong><small>'+next.date.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"2-digit"})+' às '+next.date.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})+'</small>'+(pending.length?'<div class="pickup-alert">⚠ '+fmt(pending.length)+' pedidos em alerta ainda sem carga e sem Coleta Iniciada</div>':'<div class="pickup-alert" style="background:#22c55e24;color:#bbf7d0">✓ Nenhum pedido em alerta fora de carga/coleta</div>')+'</div><div class="pickup-countdown"><small>Tempo restante</small><strong>'+escapeHtml(humanDuration(next.stamp-Date.now()).replace("vence em ",""))+'</strong></div></article>':'<article class="card pickup-next"><div class="pickup-next-icon">🚚</div><div><small>Próxima transportadora</small><strong>Nenhuma coleta cadastrada</strong><small>Cadastre os horários em Configurações.</small></div></article>';
-  const days=Array.from({length:7},(_,offset)=>{const date=new Date(now);date.setDate(date.getDate()+offset);date.setHours(0,0,0,0);const slots=[];Object.entries(pickupSchedules).forEach(([carrier,schedule])=>(schedule[String(date.getDay())]||[]).forEach(time=>{const [hour,minute]=time.split(":").map(Number),stamp=new Date(date);stamp.setHours(hour,minute,0,0);slots.push({carrier,time,stamp:stamp.getTime()})}));slots.sort((a,b)=>a.stamp-b.stamp);return{date,slots}});
-  const week='<div class="pickup-week">'+days.map((day,index)=>'<article class="card pickup-day '+(index===0?'today':'')+'"><h3>'+pickupDayNames[day.date.getDay()]+'</h3><small>'+day.date.toLocaleDateString("pt-BR")+(index===0?' · hoje':'')+'</small>'+(day.slots.length?day.slots.map(slot=>'<div class="pickup-slot '+(next&&slot.stamp===next.stamp&&normalizeHeader(slot.carrier)===normalizeHeader(next.carrier)?'next':'')+'"><strong>'+escapeHtml(slot.time)+' · '+escapeHtml(carrierShort(slot.carrier))+'</strong><small>'+fmt(pendingPickupFlow(slot.carrier,flowGroups).length)+' em fluxo sem carga</small></div>').join(''):'<div class="pickup-help">Sem coleta</div>')+'</article>').join('')+'</div>';
-  const rows=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR")).map(carrier=>'<div class="pickup-table-row"><strong>'+escapeHtml(carrier)+'</strong>'+Array.from({length:7},(_,index)=>'<span>'+escapeHtml((pickupSchedules[carrier][String(index)]||[]).join(" / ")||"—")+'</span>').join('')+'<span>'+fmt(pendingPickupFlow(carrier,flowGroups).length)+' pend.</span></div>').join('');
-  const table='<article class="card"><div class="card-head"><div><h2>Grade semanal completa</h2><p>Série 17 em fluxo e Série 14 acima de 3 dias para FL Brasil, Viviane e Patrus</p></div></div><div class="pickup-table"><div class="pickup-table-row header"><span>Transportadora</span>'+pickupDayNames.map(day=>'<span>'+day.slice(0,3)+'</span>').join('')+'<span>Alerta</span></div>'+(rows||'<div class="empty-state">Nenhuma grade cadastrada.</div>')+'</div></article>';
-  $("#pickup-dashboard").innerHTML=nextHtml+week+table;
-}
+function renderPickupDashboard(){ window.DailyExpedition.refresh(); }
 
 /* ===================== ORQUESTRAÇÃO DA INTERFACE ===================== */
 
@@ -1239,11 +1157,12 @@ function render(metrics) {
   $("#b2c-conference-summary").innerHTML = conferenceSummaryHtml(metrics.b2cHourly, false);
   $("#b2b-conference-summary").innerHTML = conferenceSummaryHtml(metrics.b2bHourly, true);
   $("#pin-table-page").innerHTML = pinHtml(metrics.pinDetails);
-  $("#productivity-content").innerHTML = productivityHtml(metrics.productivity);
+  window.LiteProductivity.render(metrics);
+  window.LiteShipping.render(metrics);
   $("#file-info").textContent = metrics.fileName
-    ? metrics.fileName + " · " + fmt(metrics.recordCount) + " registros · importado às " + metrics.importedAt
+    ? metrics.fileName + " · " + fmt(metrics.recordCount) + " registros · Última atualização: " + window.BrowserData.updatedLabel(metrics)
     : "Importe a exportação operacional para calcular os indicadores";
-  $("#footer-update").textContent = metrics.importedAt ? "Dados atualizados às " + metrics.importedAt : "Aguardando importação";
+  $("#footer-update").textContent = metrics.fileName ? "Última atualização: " + window.BrowserData.updatedLabel(metrics) : "Aguardando importação";
   $("#dispatch-carrier-card").textContent = metrics.lastDispatch ? metrics.lastDispatch.carrier : "Aguardando importação";
   $("#dispatch-time-card").textContent = metrics.lastDispatch ? metrics.lastDispatch.processedAt : "—";
   renderSlaCentral(true);
@@ -1262,7 +1181,7 @@ function showToast(message, error) {
 function generateOverviewSummary(metrics=currentMetrics,referenceDate=new Date()) {
   const blocks = [
     ["Triados", metrics.triagedSummary],
-    ["sem pdf", metrics.withoutPdfSummary],
+    ["erro XML", metrics.withoutPdfSummary],
     ["expedidos d1", metrics.dispatchedYesterday],
     ["expedidos hoje", metrics.dispatchedToday]
   ];
@@ -1291,7 +1210,7 @@ function exportSummary() {
   const lines = [
     ["Indicador", "Pedidos", "Produtos", "Volumes"],
     ["Triados", m.triagedSummary.orders, m.triagedSummary.products, m.triagedSummary.volumes],
-    ["Sem PDF", m.withoutPdfSummary.orders, m.withoutPdfSummary.products, m.withoutPdfSummary.volumes],
+    ["Erro XML", m.withoutPdfSummary.orders, m.withoutPdfSummary.products, m.withoutPdfSummary.volumes],
     ["Expedidos D1" + (m.d1Date ? " (" + m.d1Date + ")" : ""), m.dispatchedYesterday.orders, m.dispatchedYesterday.products, m.dispatchedYesterday.volumes],
     ["Expedidos hoje", m.dispatchedToday.orders, m.dispatchedToday.products, m.dispatchedToday.volumes],
     ["Solicitação PIN", m.pinRequests, "", ""]
@@ -1303,7 +1222,8 @@ function exportSummary() {
   URL.revokeObjectURL(url);
 }
 
-function exportDashboardImage() {
+async function exportDashboardImage() {
+  await window.CarrierBrands.ready();
   if (!currentMetrics.fileName) return showToast("Importe um CSV antes de exportar a imagem.", true);
   const canvas = document.createElement("canvas");
   canvas.width = 1800;
@@ -1333,11 +1253,12 @@ function exportDashboardImage() {
     }
   };
   const text = (value, x, y, size, color, weight, align) => {
-    context.fillStyle = color || colors.text;
+    context.fillStyle = deliveryColor(value,color || colors.text);
     context.font = (weight || 500) + " " + size + 'px "Segoe UI", Arial, sans-serif';
     context.textAlign = align || "left";
     context.textBaseline = "alphabetic";
-    context.fillText(String(value), x, y);
+    const carrierX=window.CarrierBrands.draw(context,value,x,y,size,align);
+    context.fillText(String(value), carrierX, y);
   };
   const summaryCard = (title, subtitle, data, x, y, accent) => {
     roundedRect(x, y, 825, 220, 18, colors.panel, colors.line);
@@ -1367,7 +1288,7 @@ function exportDashboardImage() {
   const kpis = [
     ["TRIADOS", currentMetrics.triaged, colors.blue],
     ["EXPEDIDOS HOJE", currentMetrics.processedToday, colors.green],
-    ["SEM PDF", currentMetrics.withoutPdf, colors.orange],
+    ["ERRO XML", currentMetrics.withoutPdf, colors.orange],
     ["VOLUMES", currentMetrics.volumesToday, colors.cyan]
   ];
   kpis.forEach((item, index) => {
@@ -1389,7 +1310,7 @@ function exportDashboardImage() {
   text(currentMetrics.lastDispatch ? currentMetrics.lastDispatch.processedAt : "—", 1680, 480, 22, "#ffffff", 700, "right");
 
   summaryCard("Triados", "Inclui Série 11 e resolução de quebra", currentMetrics.triagedSummary, 70, 570, colors.blue);
-  summaryCard("Sem PDF", "Série vazia e 11, exceto FedEx", currentMetrics.withoutPdfSummary, 905, 570, colors.orange);
+  summaryCard("Erro XML", "Série vazia e 11, exceto FedEx", currentMetrics.withoutPdfSummary, 905, 570, colors.orange);
   summaryCard("Expedidos D1", currentMetrics.d1Date ? "Última data processada: " + currentMetrics.d1Date : "Última data diferente da atual", currentMetrics.dispatchedYesterday, 70, 810, "#64748b");
   summaryCard("Expedidos hoje", "Processados na data atual", currentMetrics.dispatchedToday, 905, 810, colors.green);
 
@@ -1407,11 +1328,20 @@ function exportDashboardImage() {
   }, "image/png");
 }
 
-function exportDetailPageImage(pageId) {
+// Adapter keeps the existing PNG export using the same Central indexes.
+function buildSlaCentralExportModel(metrics){
+  const model=buildSlaCentralModel(metrics),areas={};
+  for(const area of ['billing','shipping'])areas[area]={records:model.get('area:'+area),dates:[...model.dates[area]].sort(([a],[b])=>a.localeCompare(b)).map(([key,hours])=>({key,label:key?slaCentralDateLabel(key):'Data inválida',records:model.get(['matrix',area,key,'*','*'].join('|')),hours:new Map([...hours].map(hour=>[hour,model.get(['matrix',area,key,String(hour),'*'].join('|'))]))}))};
+  return {...model,areas,carriers:model.ruleIds.map(id=>({normalized:id,label:centralRuleLabel(id)}))};
+}
+function slaCentralRecordsForCarrier(records,ruleId){return records.filter(record=>record.ruleId===ruleId);}
+
+async function exportDetailPageImage(pageId) {
+  await window.CarrierBrands.ready();
   const isPin = pageId === "page-pin";
   const isSla = pageId === "page-faturamento";
   const pinGroups = isPin ? groupPinDetails(currentMetrics.pinDetails) : [];
-  const slaImageModel = isSla ? buildSlaCentralModel(currentMetrics) : null;
+  const slaImageModel = isSla ? buildSlaCentralExportModel(currentMetrics) : null;
   const slaExportAreaHeight = areaData => {
     if (!areaData?.records.length) return 170;
     const bodyHeight=areaData.dates.reduce((height,date)=>height+60+([slaImageModel.todayKey,slaImageModel.d1Key].includes(date.key)?date.hours.size*54:0),0);
@@ -1424,7 +1354,7 @@ function exportDetailPageImage(pageId) {
     pinContentHeight += Math.max(leftHeight, rightHeight) + 24;
   }
   const canvas = document.createElement("canvas");
-  const slaCarrierCount=isSla?Math.max(1,...["billing","shipping"].map(area=>new Set(slaImageModel.areas[area].records.map(record=>record.carrierNormalized)).size)):0;
+  const slaCarrierCount=isSla?Math.max(1,...["billing","shipping"].map(area=>new Set(slaImageModel.areas[area].records.map(record=>record.ruleId)).size)):0;
   canvas.width = isSla ? Math.max(1800,610+slaCarrierCount*180) : 1800;
   canvas.height = isPin ? Math.max(1100, 250 + pinContentHeight) : isSla ? 260+slaExportAreaHeight(slaImageModel.areas.billing)+slaExportAreaHeight(slaImageModel.areas.shipping) : 1120;
   const context = canvas.getContext("2d");
@@ -1443,10 +1373,10 @@ function exportDetailPageImage(pageId) {
     if (stroke) { context.strokeStyle = stroke; context.lineWidth = 1; context.stroke(); }
   };
   const drawText = (value, x, y, size, color, weight, align) => {
-    context.fillStyle = color || colors.text;
+    context.fillStyle = deliveryColor(value,color || colors.text);
     context.font = (weight || 500) + " " + size + 'px "Segoe UI", Arial, sans-serif';
     context.textAlign = align || "left"; context.textBaseline = "middle";
-    context.fillText(String(value), x, y);
+    context.fillText(String(value),window.CarrierBrands.draw(context,value,x,y,size,align),y);
   };
   const fitText = (value, maximumWidth) => {
     let result = String(value || "");
@@ -1458,7 +1388,7 @@ function exportDetailPageImage(pageId) {
     "page-triados": "Triados por transportadora", "page-produtividade": "Produtividade", "page-gemba": "GEMBA", "page-pin": "Solicitação PIN",
     "page-conferencia-b2c": "Conferência Doca · B2C",
     "page-conferencia-b2b": "Conferência Doca · B2B",
-    "page-faturamento": "Expedição Pedidos", "page-transportadoras": "Transportadoras · Grade de coleta",
+    "page-faturamento": "SLA", "page-transportadoras": "Transportadoras · Grade de coleta",
     "page-relatorios": "Relatórios", "page-sla-profiles": "Perfis de prioridade SLA", "page-configuracoes": "Configurações"
   };
   context.fillStyle = colors.background; context.fillRect(0, 0, canvas.width, canvas.height);
@@ -1532,7 +1462,7 @@ function exportDetailPageImage(pageId) {
       const productivityGradient=context.createLinearGradient(70,190,1730,262);productivityGradient.addColorStop(0,"#14213a");productivityGradient.addColorStop(1,"#284f87");
       rect(70,190,1660,72,productivityGradient,null,16);
       drawText("PRODUTIVIDADE DO DIA", 94, 214, 10, "#a9bad5", 900);
-      drawText("Produtos pesados por turno", 94, 244, 22, "#fff", 900);
+      drawText("Produtos conferidos por turno", 94, 244, 22, "#fff", 900);
       drawText(today.date,1705,226,14,"#fff",900,"right");
       context.strokeStyle=colors.line;context.beginPath();context.moveTo(900,278);context.lineTo(900,520);context.stroke();
       drawText("B2C", 94, 294, 16, colors.text, 900);drawText("SÉRIE 17",150,294,9,colors.muted,800);
@@ -1540,7 +1470,7 @@ function exportDetailPageImage(pageId) {
       shiftBox("1º turno · 06h–14h59", today.b2c.shift1, 94, 330, 382);
       shiftBox("2º turno · 15h–23h59", today.b2c.shift2, 494, 330, 382);
       drawText("B2B", 924, 294, 16, colors.text, 900);drawText("SÉRIES VAZIA, 11 E 14",980,294,9,colors.muted,800);
-      drawText(fmt(today.b2b.shift1.products+today.b2b.shift2.products),1705,290,20,"#8b5cf6",900,"right");drawText("TOTAL DO DIA",1705,309,8,colors.muted,800,"right");
+      drawText(fmt(today.b2b.shift1.products+today.b2b.shift2.products),1705,290,20,DeliveryColors.b2b,900,"right");drawText("TOTAL DO DIA",1705,309,8,colors.muted,800,"right");
       shiftBox("1º turno · 06h–14h59", today.b2b.shift1, 924, 330, 382);
       shiftBox("2º turno · 15h–23h59", today.b2b.shift2, 1324, 330, 382);
       drawText("ÚLTIMOS QUATRO DIAS", 70, 575, 14, colors.text, 800);
@@ -1555,12 +1485,12 @@ function exportDetailPageImage(pageId) {
         drawText("TOTAL B2C",x+29,671,9,colors.muted,800);
         drawText(fmt(b2cTotal),x+29,702,23,colors.blue,900);
         drawText("TOTAL B2B",x+218,671,9,colors.muted,800);
-        drawText(fmt(b2bTotal),x+218,702,23,"#8b5cf6",900);
+        drawText(fmt(b2bTotal),x+218,702,23,DeliveryColors.b2b,900);
         drawText("PRODUÇÃO POR TURNO",x+18,752,9,colors.muted,800);
         [["B2C T1", day.b2c.shift1], ["B2C T2", day.b2c.shift2], ["B2B T1", day.b2b.shift1], ["B2B T2", day.b2b.shift2]].forEach((item, row) => {
           const rowY=782+row*47;
           if(row){context.strokeStyle=colors.line;context.beginPath();context.moveTo(x+18,rowY-23);context.lineTo(x+377,rowY-23);context.stroke()}
-          drawText(item[0], x + 18, rowY, 10, item[0].startsWith("B2C")?colors.blue:"#8b5cf6", 900);
+          drawText(item[0], x + 18, rowY, 10, item[0].startsWith("B2C")?DeliveryColors.b2c:DeliveryColors.b2b, 900);
           drawText(fmt(item[1].products)+" produtos",x+92,rowY,11,colors.text,800);
           drawText(decimalFmt(item[1].productsPerHour)+" prod./h",x+255,rowY-8,9,colors.text,700);
           drawText(decimalFmt(item[1].ordersPerHour)+" ped./h",x+255,rowY+9,8,colors.muted,600);
@@ -1594,7 +1524,7 @@ function exportDetailPageImage(pageId) {
     drawText("GRADE SEMANAL",70,390,16,colors.text,900);const names=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR"));const startY=430,rowH=52;names.slice(0,11).forEach((carrier,index)=>{const y=startY+index*rowH;rect(70,y,1660,rowH-6,colors.panel,colors.line,8);drawText(fitText(carrier,370),90,y+23,11,colors.text,800);pickupDayNames.forEach((day,dayIndex)=>{drawText(fitText((pickupSchedules[carrier][String(dayIndex)]||[]).join(" / ")||"—",130),520+dayIndex*155,y+23,10,colors.muted,700,"center")});drawText(fmt(pendingPickupFlow(carrier,flowGroups).length)+" pend.",1705,y+23,10,colors.text,800,"right")});pickupDayNames.forEach((day,index)=>drawText(day.slice(0,3).toUpperCase(),520+index*155,410,9,colors.muted,800,"center"));
   } else if (pageId === "page-gemba") {
     const gemba=calculateGembaMetrics(currentMetrics),flow=gemba.flow;
-    const flowTotal=flow.items.reduce((total,item)=>total+item.general,0),kpis=[["CLASSIF. ATIVAS",flow.items.length,colors.blue],["FLUXO GERAL",flowTotal,"#8b5cf6"],["PRODUZIDO B2C",gemba.production.b2c,"#06b6d4"],["PRODUZIDO B2B",gemba.production.b2b,"#22c55e"]];
+    const flowTotal=flow.items.reduce((total,item)=>total+item.general,0),kpis=[["CLASSIF. ATIVAS",flow.items.length,colors.blue],["FLUXO GERAL",flowTotal,"#8b5cf6"],["PRODUZIDO B2C",gemba.production.b2c,DeliveryColors.b2c],["PRODUZIDO B2B",gemba.production.b2b,DeliveryColors.b2b]];
     kpis.forEach((item,index)=>{const x=70+index*415;rect(x,195,395,125,colors.panel,colors.line,13);drawText(item[0],x+20,225,11,colors.muted,800);drawText(fmt(item[1]),x+20,275,31,colors.text,900);context.fillStyle=item[2];context.fillRect(x,313,395,7)});
     [["B2C",gemba.forecast.b2c],["B2B",gemba.forecast.b2b]].forEach((item,index)=>{const x=70+index*835,data=item[1];rect(x,360,805,190,colors.panel,colors.line,13);drawText("FORECAST "+item[0],x+22,390,14,colors.text,900);[["META ORIGINAL",data.meta],["PRODUZIDO",data.produced],["COMPENSAÇÃO",data.compensation],["AJUSTADA",data.adjusted]].forEach((field,column)=>{const fx=x+22+column*190;drawText(field[0],fx,430,9,colors.muted,800);drawText(fmt(field[1]),fx,468,24,colors.text,900)});drawText(data.remaining?"Faltam produzir "+fmt(data.remaining):"✓ Meta atingida",x+22,520,13,data.remaining?"#ef4444":"#22c55e",800)});
     drawText("FLUXO OPERACIONAL",70,600,15,colors.text,900);if(flow.items.length)flow.items.forEach((item,index)=>{const column=index%2,row=Math.floor(index/2),x=70+column*835,y=625+row*57;rect(x,y,805,48,colors.panel,colors.line,9);drawText(item.label,x+18,y+28,11,colors.text,900);drawText("G "+fmt(item.general)+"  ·  I "+fmt(item.imported)+"  ·  F "+fmt(item.inFlow)+"  ·  A "+fmt(item.waiting),x+780,y+28,10,colors.blue,800,"right")});else drawText("Nenhuma classificação com pedidos nos status monitorados.",70,650,12,colors.muted,700);
@@ -1618,7 +1548,7 @@ function exportDetailPageImage(pageId) {
       drawText(areaLabel,tableX+24,y+26,13,colors.text,900);
       drawText(fitText(description,tableWidth-48),tableX+24,y+51,9,colors.muted,600);
       if(!areaData.records.length){drawText("Nenhum pedido encontrado nesta etapa.",tableX+24,y+112,13,colors.muted,600);return y+height}
-      const carriers=model.carriers.filter(carrier=>areaData.records.some(record=>record.carrierNormalized===carrier.normalized)),carrierWidth=(tableWidth-firstWidth-totalWidth)/Math.max(1,carriers.length),headerY=y+sectionHeaderHeight;
+      const carriers=model.carriers.filter(carrier=>areaData.records.some(record=>record.ruleId===carrier.normalized)),carrierWidth=(tableWidth-firstWidth-totalWidth)/Math.max(1,carriers.length),headerY=y+sectionHeaderHeight;
       drawMatrixCell(tableX,headerY,firstWidth,headerHeight,colors.header);drawText("DIA/HORÁRIO",tableX+16,headerY+headerHeight/2,9,"#fff",900);
       carriers.forEach((carrier,index)=>{const x=tableX+firstWidth+index*carrierWidth;drawMatrixCell(x,headerY,carrierWidth,headerHeight,colors.header);context.font='900 9px "Segoe UI", Arial, sans-serif';drawText(fitText(String(carrier.label).toUpperCase(),carrierWidth-18),x+carrierWidth/2,headerY+headerHeight/2,9,"#fff",900,"center")});
       const totalX=tableX+tableWidth-totalWidth;drawMatrixCell(totalX,headerY,totalWidth,headerHeight,colors.header);drawText("TOTAL",totalX+totalWidth/2,headerY+headerHeight/2,9,"#fff",900,"center");
@@ -1632,7 +1562,7 @@ function exportDetailPageImage(pageId) {
           carriers.forEach((carrier,index)=>{const records=slaCentralRecordsForCarrier(hourRecords,carrier.normalized);drawCount(records,tableX+firstWidth+index*carrierWidth,rowY,carrierWidth,hourHeight,hourFill)});drawCount(hourRecords,totalX,rowY,totalWidth,hourHeight,hourFill,true);rowY+=hourHeight;
         });
       });
-      drawMatrixCell(tableX,rowY,firstWidth,footerHeight,palette.total);drawText("TOTAL POR TRANSPORTADORA",tableX+16,rowY+footerHeight/2,10,colors.text,900);
+      drawMatrixCell(tableX,rowY,firstWidth,footerHeight,palette.total);drawText("TOTAL POR REGRA",tableX+16,rowY+footerHeight/2,10,colors.text,900);
       carriers.forEach((carrier,index)=>{const records=slaCentralRecordsForCarrier(areaData.records,carrier.normalized);drawCount(records,tableX+firstWidth+index*carrierWidth,rowY,carrierWidth,footerHeight,palette.total)});drawCount(areaData.records,totalX,rowY,totalWidth,footerHeight,palette.total,true);
       return y+height;
     };
@@ -1676,7 +1606,7 @@ function exportDetailPageImage(pageId) {
   canvas.toBlob(blob => {
     if (!blob) { setExportBusy(false); return showToast("Não foi possível gerar a imagem.", true); }
     const url = URL.createObjectURL(blob), link = document.createElement("a");
-    const fileName=pageId==="page-faturamento"?"expedicao-pedidos":pageId.replace("page-", "");
+    const fileName=pageId==="page-faturamento"?"sla":pageId.replace("page-", "");
     link.href = url; link.download = fileName + "-luft-" + new Date().toISOString().slice(0, 10) + ".png";
     link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     setExportBusy(false);
@@ -1699,6 +1629,8 @@ function closeExportMenu(){const control=$("#export-control"),button=$("#export-
 /* ===================== EXPORTAÇÕES ===================== */
 
 function exportCurrentPageImage() {
+  const localPage=document.querySelector(".page.active")?.id;if(["page-expedicao","page-produtividade"].includes(localPage)){closeExportMenu();return window.BrowserData.exportScreen(localPage)}
+  if(document.querySelector(".page.active")?.id==="page-transportadoras"){closeExportMenu();return window.DailyExpedition.exportCsv();}
   if (!currentMetrics.fileName) return showToast("Importe um CSV antes de exportar a imagem.", true);
   closeExportMenu();setExportBusy(true);
   const activePage = document.querySelector(".page.active");
@@ -1709,7 +1641,7 @@ function exportCurrentPageImage() {
 /* ===================== EVENTOS DA INTERFACE ===================== */
 
 function validateCsvFile(file){if(!file)return"Nenhum arquivo foi selecionado.";if(!/\.csv$/i.test(file.name))return"Selecione um arquivo com extensão .csv.";if(!file.size)return"O arquivo CSV está vazio.";if(file.size>200*1024*1024)return"O arquivo excede o limite local de 200 MB.";return""}
-$("#csv-input").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;$("#processing").classList.add("show");$("#processing-title").textContent="Processando CSV…";$("#processing-detail").textContent="A análise está sendo executada localmente; nenhum dado será enviado.";$("#processing-steps").innerHTML="";try{const validationError=validateCsvFile(file);if(validationError)throw new Error(validationError);const buffer=await file.arrayBuffer();const metrics=await calculateMetricsAsync(buffer,file.name);currentMetrics=metrics;render(currentMetrics);resetGembaAbs();showToast(fmt(metrics.recordCount)+" registros analisados com sucesso.")}catch(error){console.error(error);showToast(error.message||"Não foi possível processar o CSV.",true)}finally{$("#processing").classList.remove("show");event.target.value=""}});
+$("#csv-input").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;$("#processing").classList.add("show");$("#processing-title").textContent="Processando CSV…";$("#processing-detail").textContent="A análise está sendo executada localmente; nenhum dado será enviado.";$("#processing-steps").innerHTML="";try{const validationError=validateCsvFile(file);if(validationError)throw new Error(validationError);const buffer=await file.arrayBuffer();const controller=new AbortController(),cancel=document.createElement("button");cancel.className="btn secondary";cancel.textContent="Cancelar importação";cancel.addEventListener("click",()=>controller.abort());$("#processing-steps").append(cancel);const metrics=await calculateMetricsAsync(buffer,file.name,{signal:controller.signal,onProgress:rows=>{$("#processing-detail").textContent=fmt(rows)+" linhas processadas · dados anteriores preservados até concluir"}});try{await window.BrowserData.write(metrics)}catch(storageError){console.error(storageError);throw new Error("Não foi possível salvar a nova base neste navegador. Os dados anteriores foram mantidos; tente importar novamente.")}currentMetrics=metrics;render(currentMetrics);resetGembaAbs();showToast(fmt(metrics.recordCount)+" registros analisados com sucesso.")}catch(error){console.error(error);showToast(error.message||"Não foi possível processar o CSV.",true)}finally{$("#processing").classList.remove("show");event.target.value=""}});
 
 $("#copy-summary").addEventListener("click", copyOverviewSummary);
 $("#export-summary").addEventListener("click", exportSummary);
@@ -1718,8 +1650,8 @@ $("#export-current-page").addEventListener("click",exportCurrentPageImage);
 $("#export-dashboard").addEventListener("click",()=>{if(!currentMetrics.fileName)return showToast("Importe um CSV antes de exportar a imagem.",true);closeExportMenu();setExportBusy(true);exportDashboardImage()});
 $("#export-menu").addEventListener("click",event=>event.stopPropagation());
 document.addEventListener("click",closeExportMenu);
-$("#sla-central-import").addEventListener("click",()=>$("#csv-input").click());
-$("#page-faturamento").addEventListener("click",event=>{
+$("#sla-central-import")?.addEventListener("click",()=>$("#csv-input").click());
+$("#page-faturamento")?.addEventListener("click",event=>{
   const toggle=event.target.closest("[data-sla-toggle-area]");if(toggle){const area=toggle.dataset.slaToggleArea,date=toggle.dataset.slaToggleDate,expanded=slaCentralUi.expanded[area];if(expanded.has(date))expanded.delete(date);else expanded.add(date);renderSlaCentral();return}
   const button=event.target.closest("[data-sla-context]");if(!button||!button.dataset.slaContext)return;const context=slaCentralUi.contexts.get(button.dataset.slaContext);if(context)openSlaCentralDrawer(context.records,context.title);
 });
@@ -1731,7 +1663,7 @@ $("#sla-drawer-body").addEventListener("click",event=>{
 });
 $("#sla-drawer-close").addEventListener("click",closeSlaDrawer); $("#sla-drawer-backdrop").addEventListener("click",closeSlaDrawer);
 document.addEventListener("keydown",event=>{if(event.key==="Escape"){closeSlaDrawer();closeExportMenu();closeGembaAbs()}});
-setInterval(()=>{if(!currentMetrics.fileName||document.hidden)return;const page=document.querySelector(".page.active")?.id;if(page==="page-faturamento")renderSlaCentral();else if(page==="page-transportadoras")renderPickupDashboard()},60000);
+setInterval(()=>{if(!currentMetrics.fileName||document.hidden)return;const page=document.querySelector(".page.active")?.id;if(page==="page-faturamento")renderSlaCentral();},60000);
 populateProfileCarriers();renderSlaProfileList();clearProfileForm();
 $("#gemba-import").addEventListener("click",()=>$("#csv-input").click());
 $("#gemba-copy").addEventListener("click",copyGemba);
@@ -1770,12 +1702,12 @@ $("#sla-profile-form").addEventListener("submit",event=>{
   saveSlaProfiles();
   refreshSlaConsumers();
   clearProfileForm();
-  showToast("Perfil salvo. Limites aplicados em Expedição Pedidos.");
+  showToast("Perfil salvo. Limites aplicados em SLA.");
 });
 $("#sla-profile-list").addEventListener("click",event=>{const button=event.target.closest("[data-profile-action]");if(!button)return;const profile=slaProfiles.find(item=>item.id===button.dataset.profileId);if(!profile)return;if(button.dataset.profileAction==="edit")return editSlaProfile(profile);if(button.dataset.profileAction==="duplicate"){const copy=JSON.parse(JSON.stringify(profile));copy.id="sla_"+Date.now()+"_"+Math.random().toString(36).slice(2,7);copy.name=profile.name+" · cópia";copy.createdAt=new Date().toISOString();slaProfiles.push(copy);saveSlaProfiles();refreshSlaConsumers();return showToast("Perfil duplicado.")}if(button.dataset.profileAction==="delete"){if(!confirm('Excluir o perfil "'+profile.name+'"? Pedidos associados ficarão sem SLA configurado.'))return;slaProfiles=slaProfiles.filter(item=>item.id!==profile.id);saveSlaProfiles();refreshSlaConsumers();clearProfileForm();showToast("Perfil excluído.")}});
 document.querySelectorAll("[data-export-page]").forEach(button=>button.addEventListener("click",exportCurrentPageImage));
 $("#pickup-go-settings").addEventListener("click",()=>{const button=document.querySelector('.nav-item[data-page="configuracoes"]');if(button)button.click()});
-$("#pickup-dashboard").addEventListener("click",event=>{const card=event.target.closest("[data-next-pickup]");if(!card)return;const next=allUpcomingPickups(new Date())[0];if(!next)return;const records=pendingPickupFlow(next.carrier);if(!records.length)return showToast("A próxima transportadora não possui pedidos em alerta fora de carga/coleta.");openSlaDrawer(records,"Próxima coleta · "+carrierShort(next.carrier))});
+
 $("#pickup-dashboard").addEventListener("keydown",event=>{if((event.key==="Enter"||event.key===" ")&&event.target.closest("[data-next-pickup]")){event.preventDefault();event.target.closest("[data-next-pickup]").click()}});
 [["#b2c-table","b2c"],["#b2b-table","b2b"]].forEach(([selector,segment])=>$(selector).addEventListener("click",event=>{const cell=event.target.closest("[data-conference-key]"),total=event.target.closest("[data-conference-total]");if(cell)openConferenceDetails(conferenceBucketByKey(cell.dataset.conferenceKey,segment),segment);else if(total)openConferenceDetails(conferenceTotalByCarrier(total.dataset.conferenceTotal,segment),segment)}));
 let matrixResizeTimer;
@@ -1791,6 +1723,7 @@ window.addEventListener("resize", () => {
 // Páginas administrativas continuam protegidas mesmo quando acessadas diretamente pelo hash.
 function requiredRoleForPage(page){if(["configuracoes","sla-profiles"].includes(page))return"manager";return"operation"}
 function navigateToPage(page,options={}){
+  if(page === "faturamento")return false;
   const required=requiredRoleForPage(page);
   if(!hasAccess(required)){showToast("Entre como Gestor ou Administrador para acessar esta área.",true);showAuthModal();return false}
   const button=document.querySelector('.nav-item[data-page="'+CSS.escape(page)+'"]'),target=$("#page-"+page);
@@ -1833,8 +1766,5 @@ const now = new Date();
 $("#current-date").textContent = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "").toUpperCase();
 render(currentMetrics);
 createAccessGateway();
-$("#access-button").addEventListener("click",()=>hasAccess("leader")?showAuthModal():showAccessGateway());$("#auth-close").addEventListener("click",closeAuthModal);$("#operation-mode").addEventListener("click",enterOperationMode);$("#auth-backdrop").addEventListener("click",event=>{if(event.target===$("#auth-backdrop"))closeAuthModal()});
-$("#manager-login-form").addEventListener("submit",async event=>{event.preventDefault();if(!cloudState.client){$("#auth-error").textContent="O Supabase ainda não foi configurado neste arquivo.";return}const email=$("#manager-email").value.trim(),password=$("#manager-password").value;$("#auth-error").textContent="Autenticando…";const {data,error}=await cloudState.client.auth.signInWithPassword({email,password});if(error){$("#auth-error").textContent="E-mail ou senha inválidos.";return}const role=await verifyAccessProfile(data.user);if(accessLevel(role)<accessLevel("leader")){await cloudState.client.auth.signOut();$("#auth-error").textContent="Este usuário não possui perfil de acesso ativo.";return}cloudState.user=data.user;cloudState.role=role;cloudState.isManager=hasAccess("manager");if(cloudState.isManager)await pullCloudSettings(false);enterManagerMode();showToast("Acesso "+role+" liberado.")});
-$("#manager-logout").addEventListener("click",async()=>{if(cloudState.client)await cloudState.client.auth.signOut();cloudState.user=null;cloudState.role="operation";cloudState.isManager=false;sessionStorage.removeItem("luft-access-mode");applyAccessMode();hideAuthModal();showAccessGateway();showToast("Sessão autenticada encerrada.")});
 document.addEventListener("click",event=>{if(event.target?.id==="database-sync")syncAllSettings()});
 initializeSupabase().then(restoreRoute).catch(error=>{console.error(error);showToast("Falha ao inicializar o controle de acesso.",true)});
