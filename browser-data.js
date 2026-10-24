@@ -3,6 +3,10 @@ window.BrowserData = (() => {
   function database(){return new Promise((resolve,reject)=>{const request=indexedDB.open('luft-local-data',1);request.onupgradeneeded=()=>request.result.createObjectStore('data');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})}
   async function write(metrics){const db=await database();try{await new Promise((resolve,reject)=>{const tx=db.transaction('data','readwrite');tx.objectStore('data').put(metrics,'metrics');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}finally{db.close()}}
   async function read(){const db=await database();try{return await new Promise((resolve,reject)=>{const request=db.transaction('data').objectStore('data').get('metrics');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})}finally{db.close()}}
+  function updatedLabel(metrics){
+    const stamp=Date.parse(metrics.slaCentralImportedAt||'');
+    return Number.isFinite(stamp)?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(stamp))+' (Brasília)':(metrics.importedAt||'Hor?rio n?o registrado');
+  }
   function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
   function snapshot(page){
     const root=document.getElementById(page),clone=root.cloneNode(true);
@@ -20,5 +24,5 @@ window.BrowserData = (() => {
     }catch(error){console.error(error);showToast('N\u00e3o foi poss\u00edvel exportar a tela.',true)}
   }
   document.addEventListener('click',event=>{const button=event.target.closest('[data-screen-export]');if(button)exportScreen(button.closest('.page').id,button.dataset.screenExport)});
-  return {read,write,exportScreen};
+  return {read,write,exportScreen,updatedLabel};
 })();
