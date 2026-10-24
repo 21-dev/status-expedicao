@@ -41,6 +41,8 @@ window.exportStyledScreen = async function(page, name, download) {
     if(values.length){space(130);const width=(1660-20*(values.length-1))/values.length;values.forEach((value,i)=>{const x=70+i*(width+20);rect(x,y,width,108);text(clean(value.querySelector('small')).toUpperCase(),x+24,y+33,14,c.muted,700);text(clean(value.querySelector('strong')),x+24,y+80,32,c.text,800)});y+=130}
     const chart=card.querySelector('.prod-chart');
     if(chart){space(290);rect(70,y,1660,265);const hours=[...chart.querySelectorAll('.prod-hour')],values=hours.map(hour=>[...hour.querySelectorAll('.prod-bar')].map(bar=>parseFloat(bar.style.height)||0));for(let h=0;h<24;h++){const x=112+h*65;values[h]?.forEach((value,i)=>{ctx.fillStyle=i?DeliveryColors.b2b:c.blue;ctx.fillRect(x+i*21,y+215-value*1.8,18,value*1.8)});text(String(h).padStart(2,'0')+'h',x,y+244,13,c.muted)}text('B2C',1500,y+28,14,c.blue,700);text('B2B',1580,y+28,14,DeliveryColors.b2b,700);y+=290}
+    // Productivity reports end after the hourly chart.
+    if(page==='page-produtividade'&&chart)break;
     for(const table of (chart?[]:card.querySelectorAll('table'))){
       const headers=[...table.querySelectorAll('thead th')].map(clean),n=headers.length;if(!n)continue;
       const width=1660/n;
