@@ -9,3 +9,28 @@
 .prod-rank{display:inline-block;padding:5px 9px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}.prod-rank.prod-best{color:#15803d;background:#22c55e24}.prod-rank.prod-worst{color:#dc2626;background:#ef444424}tr.prod-best>th{border-left:4px solid #22c55e}tr.prod-worst>th{border-left:4px solid #ef4444}
 
 .prod-turn-summary{margin-top:20px}.prod-turn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.prod-turn-card{padding:22px;border-left:4px solid #3b82f6}.prod-turn-card h3{margin:0 0 6px}.prod-turn-card small{display:block;color:var(--muted);font-size:12px}.prod-turn-channel{margin-top:20px}.prod-turn-channel strong{display:block;font-size:22px;margin-bottom:6px}.prod-turn-channel.b2c strong{color:#3b82f6}.prod-turn-channel.b2b strong{color:#14b8a6}@media(max-width:780px){.prod-turn-grid{grid-template-columns:1fr}}
+
+/* Dispatch matrix keeps each carrier visible while scrolling. */
+#page-expedicao .shipping-grid{grid-template-columns:minmax(0,1fr)}
+.shipping-matrix-scroll{max-height:620px;overscroll-behavior:contain}
+.shipping-matrix th,.shipping-matrix td{min-width:104px}
+.shipping-matrix thead th{z-index:2}
+.shipping-matrix th:first-child{position:sticky;left:0;background:var(--panel);z-index:1;min-width:160px}
+.shipping-matrix thead th:first-child{z-index:3}
+.shipping-matrix tfoot th,.shipping-matrix tfoot td{background:var(--bg);font-weight:800}
+.shipping-matrix tbody td:last-child{background:color-mix(in srgb,var(--panel) 92%,#3b82f6)}
+
+/* Fora de carga: grade tabular com leitura por linha e coluna. */
+#page-expedicao .shipping-grid .card-head{border-bottom:1px solid var(--line)}
+#page-expedicao .shipping-matrix{border-collapse:separate;border-spacing:0;width:100%;font-variant-numeric:tabular-nums}
+#page-expedicao .shipping-matrix th,#page-expedicao .shipping-matrix td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:11px 14px;text-align:center}
+#page-expedicao .shipping-matrix th:first-child{text-align:left}
+#page-expedicao .shipping-matrix thead th{background:var(--bg);font-size:11px;font-weight:700;white-space:normal;border-top:1px solid var(--line)}
+#page-expedicao .shipping-matrix tbody tr:nth-child(even)>*{background:color-mix(in srgb,var(--panel) 94%,var(--muted))}
+#page-expedicao .shipping-matrix tbody tr:hover>*{background:color-mix(in srgb,var(--panel) 90%,#3b82f6)}
+#page-expedicao .shipping-matrix .priority-quantity{border-radius:4px;background:transparent;min-width:42px;padding:5px 9px;text-decoration:underline;text-underline-offset:3px}
+#page-expedicao .shipping-matrix .priority-quantity:hover{background:color-mix(in srgb,var(--panel) 85%,#3b82f6)}
+#page-expedicao .shipping-matrix tfoot>*{border-top:2px solid var(--line)}
+#page-expedicao .shipping-matrix tfoot th,#page-expedicao .shipping-matrix tfoot td{background:var(--bg)}
+
+.shipping-updated{display:block;margin-top:10px;padding:10px 14px;border:1px solid var(--line);border-left:3px solid #3b82f6;border-radius:6px;background:var(--panel);color:var(--ink)!important;line-height:1.6;font-weight:600;overflow-wrap:anywhere}
