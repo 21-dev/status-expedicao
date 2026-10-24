@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="Painel operacional logístico para análise de exportações CSV">
   <title>Luft | Status Operacional Lite</title>
-  <link rel="icon" type="image/svg+xml" href="favicon-luft-alpargatas.svg?v=1">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-luft-alpargatas-32.png?v=1">
-  <link rel="shortcut icon" href="favicon-luft-alpargatas.ico?v=1">
-  <link rel="apple-touch-icon" sizes="180x180" href="favicon-luft-alpargatas-180.png?v=1">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon-luft-alpargatas.svg?v=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-luft-alpargatas-32.png?v=1">
+  <link rel="shortcut icon" href="assets/favicon-luft-alpargatas.ico?v=1">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon-luft-alpargatas-180.png?v=1">
   
     <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="expedition.css">
@@ -29,7 +29,7 @@
   -->
   <div class="app">
     <aside class="sidebar" id="sidebar" aria-label="Menu principal">
-      <div class="brand"><img class="logo" src="brand-luft-alpargatas.svg" alt="Luft e Alpargatas"><div><strong>LUFT</strong><small>Status operacional</small></div></div>
+      <div class="brand"><img class="logo" src="assets/brand-luft-alpargatas.svg" alt="Luft e Alpargatas"><div><strong>LUFT</strong><small>Status operacional</small></div></div>
       <p class="nav-title">OPERAÇÃO</p>
       <nav aria-label="Operação">
         <button type="button" class="nav-item active" data-page="dashboard"><span>▦</span>Visão geral</button>
@@ -86,9 +86,9 @@
 
         <!-- GEMBA: fluxo, forecast, metas e cadastro diário de ABS. -->
         <section class="page" id="page-expedicao">
-          <div class="intro"><div><p>Expedição</p><small>Pedidos fora de carga e cargas aguardando finalização no WMS</small></div><div class="actions"><button type="button" class="btn primary" id="shipping-import">Atualizar CSV</button></div></div>
-          <div class="card priority-filters"><label>Pesquisar<input type="search" id="shipping-search" placeholder="Nota, pedido, carga ou transportadora"></label><label>Categoria<select id="shipping-category"><option value="">B2B e B2C</option><option value="b2c">B2C</option><option value="b2b">B2B</option></select></label></div>
-          <p class="priority-notice">Status considerados: Conferência concluída, Enviado para faturamento, Faturado ou Coleta iniciada. Pendentes de finalização: Processado diferente de 1 e sem data em Processado em. B2C: série 17; B2B: séries 11, 14 ou vazia. Cancelados e expedidos ficam fora da visão. Dados referentes à última importação do CSV.</p>
+          <div class="intro"><div><p>Expedição</p><small>Pedidos fora de carga e cargas aguardando finalização no WMS</small><small id="shipping-updated" class="shipping-updated" role="status">Aguardando upload do CSV.</small></div><div class="actions"><button type="button" class="btn primary" id="shipping-import">Atualizar CSV</button></div></div>
+          <div class="card priority-filters"><label>Pesquisar<input type="search" id="shipping-search" placeholder="Nota, pedido, carga ou transportadora"></label><label>Categoria<select id="shipping-category"><option value="">B2B e B2C</option><option value="b2c">B2C</option><option value="b2b">B2B</option></select></label><label>Transportadora<select id="shipping-carrier"><option value="">Todas as transportadoras</option></select></label><label>Dia da conferência<input type="date" id="shipping-date"></label></div>
+          <p class="priority-notice">Status considerados: Conferência concluída, Enviado para faturamento, Faturado ou Coleta iniciada. Pendentes de finalização: Processado diferente de 1 e sem data em Processado em. B2C: VENDA OMN CHANNEL, ALOM-SPASA-VENDA FUNCION. e SPASA-REM AMC; demais classificações: B2B. Dias e horas seguem Conferido em, no horário de Brasília. Cancelados e expedidos ficam fora da visão. Dados referentes à última importação do CSV.</p>
           <div id="shipping-content"></div>
         </section>
         <section class="page" id="page-prioridades">
@@ -108,19 +108,9 @@
           </div>
         </section>
 
-        <!-- Expedição Pedidos: os IDs abaixo são atualizados por renderSlaCentral(). -->
-        <section class="page" id="page-faturamento" data-lite-excluded="true" hidden inert>
-          <div class="intro sla-central-intro"><div><p>Expedição Pedidos</p><small id="sla-central-updated">Importe o CSV para calcular os pedidos pendentes</small></div><div class="actions"><button type="button" class="btn secondary" id="sla-central-import">↻ Atualizar CSV</button></div></div>
-          <div id="sla-central-diagnostics"></div>
-          <div class="sla-central-kpis" aria-live="polite"></div>
-          <article class="card sla-normal-breakdown-card"><div class="card-head"><div><h2>Prioridades por regra de SLA</h2><p>Regras oficiais · calendário operacional · horário de São Paulo</p></div></div><div id="sla-normal-breakdown"></div></article>
-          <div class="sla-central-tables">
-            <article class="card sla-matrix-card"><div class="card-head sla-matrix-head"><div><h2>Pendentes de faturamento</h2><p>Datas expansíveis · pedidos por regra e hora</p></div><span class="sla-table-hint">＋ Expandir data</span></div><div id="sla-billing-table"></div></article>
-            <article class="card sla-matrix-card"><div class="card-head sla-matrix-head"><div><h2>Pendentes de expedição</h2><p>Datas expansíveis · pedidos por regra e hora</p></div><span class="sla-table-hint">＋ Expandir data</span></div><div id="sla-shipping-table"></div></article>
-          </div>
-        </section>
+        <!-- SLA: os IDs abaixo são atualizados por renderSlaCentral(). -->
         <section class="page" id="page-transportadoras" data-lite-excluded="true" hidden inert><div class="ex-intro"><div><span class="ex-kicker">LUFT · STATUS OPERACIONAL / EXPEDIÇÃO</span><h2>Controle diário de transportadoras</h2><p>Acompanhamento de chegada, entrada e saída do CD</p></div><div class="ex-header-actions"><button type="button" class="btn secondary" id="ex-export">↓ Exportar CSV</button><label class="ex-date">Data da operação<input id="ex-date" type="date" aria-label="Data operacional"></label><button type="button" class="btn secondary" id="pickup-go-settings">⚙ Cadastrar horários</button></div></div><div id="pickup-dashboard"></div></section>
-        <section class="page" id="page-pin"><div class="intro"><div><p>Solicitações PIN</p><small>Somente FL Brasil · pedidos separados por carga para os estados atendidos</small></div></div><div class="pin-groups" id="pin-table-page"></div></section>
+        <section class="page" id="page-pin"><div class="intro"><div><p>Solicitações PIN</p><small>FL Brasil e MANAUS · pedidos separados por carga para os estados atendidos</small></div></div><div class="pin-groups" id="pin-table-page"></div></section>
         <section class="page conference-screen" id="page-conferencia-b2c" data-lite-excluded="true" hidden inert><div class="intro"><div><p>Conferência Doca · B2C</p><small>Série 17 · pedidos sem carga organizados por transportadora</small></div><div class="conference-overview" id="b2c-conference-summary"></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2C por dia e hora</h2><p>Passe o cursor sobre uma célula para consultar os detalhes</p></div><span class="conference-format">Célula = pedidos</span></div><div class="matrix-wrap" id="b2c-table"></div></article></section>
         <section class="page conference-screen" id="page-conferencia-b2b" data-lite-excluded="true" hidden inert><div class="intro"><div><p>Conferência Doca · B2B</p><small>Séries 14 e vazia · pedidos sem carga organizados por transportadora</small></div><div class="conference-overview" id="b2b-conference-summary"></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2B por dia e hora</h2><p>Passe o cursor sobre uma célula para consultar pedidos e volumes</p></div><span class="conference-format">Célula = pedidos (volumes)</span></div><div class="matrix-wrap" id="b2b-table"></div></article></section>
         <section class="page placeholder" id="page-relatorios" data-lite-excluded="true" hidden inert><div class="empty-icon">↗</div><h2>Relatórios</h2><p>Use “Exportar resumo” para baixar os indicadores atuais.</p></section>
