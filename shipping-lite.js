@@ -6,17 +6,17 @@ window.LiteShipping=(()=>{
   const dateKey=stamp=>dayFormatter.format(new Date(stamp));
   function yesterday(){const today=dateKey(Date.now());return new Date(Date.parse(today+'T12:00:00Z')-86400000).toISOString().slice(0,10)}
   const isD1=(r,key)=>Boolean(r.actualImportedStamp)&&dateKey(r.actualImportedStamp)===key;
-  const oldest=rows=>rows.reduce((stamp,r)=>r.actualImportedStamp?Math.min(stamp,r.actualImportedStamp):stamp,Infinity);
+
   const ready=['CONFERENCIA CONCLUIDA','ENVIADO PARA FATURAMENTO','FATURADO','COLETA INICIADA'];
   const norm=v=>normalizeHeader(v).toUpperCase();
   const esc=v=>escapeHtml(String(v??''));
   const hasLoad=r=>!['','0','SEM CARGA','NAO INFORMADO','-'].includes(norm(r.load));
   const sum=(rows,key)=>rows.reduce((n,r)=>n+(Number(r[key])||0),0);
   const count=rows=>new Set(rows.map(r=>r.order)).size;
-  function button(rows,label){
+  function button(rows,label,metric='orders'){
     if(!rows.length)return '0';
     const key=String(groups.size);groups.set(key,{rows,label});
-    return '<button type="button" class="priority-quantity" data-shipping-detail="'+key+'" aria-label="'+esc('Detalhar '+label)+'">'+fmt(count(rows))+'</button>';
+    return '<button type="button" class="priority-quantity" data-shipping-detail="'+key+'" aria-label="'+esc('Detalhar '+label)+'">'+fmt(metric==='orders'?count(rows):sum(rows,metric))+'</button>';
   }
   function summary(rows,label){return '<div class="shipping-summary"><div><small>Pedidos / remessas</small><strong>'+button(rows,label)+'</strong></div><div><small>Peças</small><strong>'+fmt(sum(rows,'products'))+'</strong></div><div><small>Volumes</small><strong>'+fmt(sum(rows,'volumes'))+'</strong></div></div>'}
   function carrierTable(rows,label){
@@ -49,7 +49,7 @@ window.LiteShipping=(()=>{
     const carriers=[...new Set(all.map(r=>r.carrier||'Não informada'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
     carrierSelect.innerHTML='<option value="">Todas as transportadoras</option>'+carriers.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
     carrierSelect.value=carriers.includes(selectedCarrier)?selectedCarrier:'';
-    const rows=all.filter(r=>(!category||r.segment===category)&&(!carrierSelect.value||(r.carrier||'Não informada')===carrierSelect.value)&&(!selectedDate||(r.conferenceStamp&&dateKey(r.conferenceStamp)===selectedDate))&&(!search||['order','invoice','load','carrier','client','service','status'].some(key=>norm(r[key]).includes(search))));
+    const rows=all.filter(r=>(!category||r.segment===category)&&(!carrierSelect.value||(r.carrier||'Não informada')===carrierSelect.value)&&(!selectedDate||(r.conferenceStamp&&dateKey(r.conferenceStamp)===selectedDate))&&(!search||['order','invoice','load','carrier','client','service','marketplace','status'].some(key=>norm(r[key]).includes(search))));
     const outside=rows.filter(r=>!hasLoad(r)),allLoaded=rows.filter(hasLoad),d1=yesterday();
     const priorityLoads=new Set(allLoaded.filter(r=>isD1(r,d1)).map(r=>r.load));
     const loaded=onlyD1?allLoaded.filter(r=>priorityLoads.has(r.load)):allLoaded;
@@ -57,16 +57,38 @@ window.LiteShipping=(()=>{
     root.innerHTML='<div class="actions"><button type="button" class="btn secondary" data-screen-export="png">Exportar PNG</button><button type="button" class="btn secondary" data-screen-export="csv">Exportar CSV</button></div><div class="shipping-grid">'+['b2c','b2b'].filter(s=>!category||s===category).map(s=>{
       const list=outside.filter(r=>r.segment===s),label=s.toUpperCase()+' · Fora de carga';
       return '<article class="card priority-card"><div class="card-head"><div><h2>'+label+'</h2><p>Pedidos prontos · Dia e hora de Conferido em · Cada célula representa pedidos</p></div></div>'+summary(list,label)+carrierTable(list,label)+'</article>';
-    }).join('')+'</div><article class="card shipping-loaded"><div class="card-head"><div><h2>Em carga · Aguardando finalização no WMS</h2><p>B2C primeiro; depois B2B. Em cada modelo, cargas com pedidos de D−1 aparecem primeiro · Importado em '+d1.split('-').reverse().join('/')+' · horário de Brasília</p></div></div><div class="shipping-d1-focus"><div><small>FOCO D−1 · DIA ANTERIOR</small><strong>'+fmt(priorityLoads.size)+' cargas com '+button(d1Rows,'Pedidos importados em D−1 · '+d1.split('-').reverse().join('/'))+' pedidos de D−1</strong><p>O filtro mantém todos os pedidos das cargas selecionadas, incluindo os importados em outros dias.</p></div><label><input type="checkbox" id="shipping-only-d1" '+(onlyD1?'checked':'')+'> Somente cargas com pedidos de D−1</label></div>'+summary(loaded,'Em carga · Aguardando finalização no WMS')+loadTable(loaded,d1,priorityLoads)+'</article><p class="priority-notice">'+fmt(count(rows))+' pedidos na visão filtrada · '+fmt(count(all))+' pedidos na base. Quantidades de peças e volumes somadas por registro do CSV. Clique na quantidade de pedidos para consultar e exportar os detalhes.</p>';
+    }).join('')+'</div><article class="card shipping-loaded"><div class="card-head"><div><h2>Em carga · Aguardando finalização no WMS</h2><p>Marketplaces e transportadoras separados · Peças por status e data de cadastro · Foco em cargas com pedidos de D−1 · Importado em '+d1.split('-').reverse().join('/')+' · horário de Brasília</p></div></div><div class="shipping-d1-focus"><div><small>FOCO D−1 · DIA ANTERIOR</small><strong>'+fmt(priorityLoads.size)+' cargas com '+button(d1Rows,'Pedidos importados em D−1 · '+d1.split('-').reverse().join('/'))+' pedidos de D−1</strong><p>O filtro mantém todos os pedidos das cargas selecionadas, incluindo os importados em outros dias.</p></div><label><input type="checkbox" id="shipping-only-d1" '+(onlyD1?'checked':'')+'> Somente cargas com pedidos de D−1</label></div>'+summary(loaded,'Em carga · Aguardando finalização no WMS')+loadedChannels(loaded)+'</article><p class="priority-notice">'+fmt(count(rows))+' pedidos na visão filtrada · '+fmt(count(all))+' pedidos na base. Quantidades de peças e volumes somadas por registro do CSV. Clique na quantidade de pedidos para consultar e exportar os detalhes.</p>';
   }
-  function loadTable(rows,d1,priorityLoads){
-    if(!rows.length)return '<div class="empty-state compact">Nenhuma carga com pedidos aguardando finalização para estes filtros.</div>';
-    const loads=new Map();rows.forEach(r=>{const key=JSON.stringify([r.load,r.segment,r.carrier]);if(!loads.has(key))loads.set(key,[]);loads.get(key).push(r)});
-    const oldestByLoad=new Map();rows.forEach(r=>{if(r.actualImportedStamp)oldestByLoad.set(r.load,Math.min(oldestByLoad.get(r.load)??Infinity,r.actualImportedStamp))});
-    return '<div class="priority-scroll"><table class="priority-table"><thead><tr><th>Carga</th><th>Categoria</th><th>Transportadora</th><th>Pedidos</th><th>Pedidos D−1</th><th>Importação mais antiga</th><th>Peças</th><th>Volumes</th><th>Status presentes</th></tr></thead><tbody>'+[...loads.values()].sort((a,b)=>Number(b[0].segment==='b2c')-Number(a[0].segment==='b2c')||Number(priorityLoads.has(b[0].load))-Number(priorityLoads.has(a[0].load))||((oldestByLoad.get(a[0].load)??Infinity)-(oldestByLoad.get(b[0].load)??Infinity)||0)||a[0].load.localeCompare(b[0].load,'pt-BR',{numeric:true})).map(list=>{
-      const r=list[0],previous=list.filter(item=>isD1(item,d1)),first=oldest(list),unknown=list.filter(item=>!item.actualImportedStamp).length;
-      return '<tr class="'+(priorityLoads.has(r.load)?'shipping-d1-row':'')+'"><th>'+esc(r.load)+(priorityLoads.has(r.load)?'<span class="shipping-d1-badge">PRIORIDADE D−1</span>':'')+'</th><td>'+r.segment.toUpperCase()+'</td><td>'+esc(r.carrier||'Não informada')+'</td><td>'+button(list,'Carga '+r.load+' · '+r.segment.toUpperCase()+' · '+(r.carrier||'Não informada'))+'</td><td>'+button(previous,'Carga '+r.load+' · '+r.segment.toUpperCase()+' · Pedidos de D−1')+'</td><td>'+(Number.isFinite(first)?esc(new Date(first).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',hour12:false})):'Não informada')+(unknown?'<small class="shipping-missing-date">'+fmt(unknown)+' sem data de importação</small>':'')+'</td><td>'+fmt(sum(list,'products'))+'</td><td>'+fmt(sum(list,'volumes'))+'</td><td>'+esc([...new Set(list.map(r=>r.status))].join(' · '))+'</td></tr>';
-    }).join('')+'</tbody></table></div>';
+  function loadedChannels(rows){
+    const channel=r=>{
+      const market=norm(r.marketplace),service=norm(r.service),carrier=norm(r.carrier),value=market+' '+service+' '+carrier;
+      if(/SHOPEE|SHOPPE/.test(value))return 'Shopee';
+      if(/AMAZON/.test(value)||service==='ENTREGA NORMAL/TO DO')return 'Amazon';
+      if(/TIKTOK|TIK TOK|BYTEDANCE/.test(value))return 'TikTok';
+      if(/CLIENTE RETIRA|CLICK.*RETIR|CLIQUE.*RETIR/.test(value))return 'Click Retire';
+      if(/L4B|L4 B/.test(value))return 'L4B';
+      if(/JADLOG/.test(value)||/\/(JAD)$/.test(service))return 'Jadlog';
+      return 'Outros canais';
+    };
+    const labels=['CONFERÊNCIA CONCLUÍDA','ENVIADO PARA FATURAMENTO','FATURADO','COLETA INICIADA'];
+    const date=r=>r.registeredStamp?dateKey(r.registeredStamp):'Sem cadastro';
+    const dateLabel=d=>d==='Sem cadastro'?d:d.split('-').reverse().join('/');
+    function matrix(list,title){
+      if(!list.length)return '<div class="empty-state compact">Nenhum pedido em carga neste canal para os filtros selecionados.</div>';
+      const days=[...new Set(list.map(date))].sort();
+      const cell=(items,label)=>'<td>'+button(items,label,'products')+'</td>';
+      return '<div class="priority-scroll"><table class="priority-table"><thead><tr><th>Status</th>'+days.map(d=>'<th>'+esc(dateLabel(d))+'</th>').join('')+'<th>Total de peças</th></tr></thead><tbody>'+labels.map(status=>{
+        const items=list.filter(r=>norm(r.status)===norm(status));
+        return '<tr><th>'+status+'</th>'+days.map(d=>cell(items.filter(r=>date(r)===d),title+' · '+status+' · '+dateLabel(d))).join('')+cell(items,title+' · '+status)+'</tr>';
+      }).join('')+'</tbody><tfoot><tr><th>Total de peças</th>'+days.map(d=>cell(list.filter(r=>date(r)===d),title+' · '+dateLabel(d))).join('')+cell(list,title+' · Total')+'</tr></tfoot></table></div>';
+    }
+    return [['Marketplaces',['Shopee','Amazon','TikTok']],['Transportadoras',['Click Retire','L4B','Jadlog']],['Demais canais',['Outros canais']]].map(([section,names])=>{
+      if(section==='Demais canais'&&!rows.some(r=>channel(r)==='Outros canais'))return '';
+      return '<section class="shipping-channel-section"><div class="card-head"><h3>'+section+'</h3><p>Peças por status e data de cadastro · pedidos em carga aguardando finalização no WMS</p></div><div class="priority-cards">'+names.map(name=>{
+        const list=rows.filter(r=>channel(r)===name);
+        return '<article class="card priority-card" data-shipping-channel="'+name+'"><div class="card-head"><div><h2>'+name+'</h2><p>Conferência concluída · Enviado para faturamento · Faturado · Coleta iniciada</p></div><strong>'+fmt(sum(list,'products'))+' peças</strong></div>'+summary(list,name+' · Em carga')+matrix(list,name)+'</article>';
+      }).join('')+'</div></section>';
+    }).join('');
   }
   document.addEventListener('DOMContentLoaded',()=>{
     document.querySelector('#shipping-import').addEventListener('click',()=>document.querySelector('#csv-input').click());
