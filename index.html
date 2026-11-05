@@ -4,17 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="Painel operacional logístico para análise de exportações CSV">
-  <title>Luft | Status Operacional Lite</title>
-  
-    <link rel="stylesheet" href="styles.css">
+  <title>Luft | Status Operacional</title>
+    <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="priorities-lite.css?v=20261030-channels">
   <link rel="stylesheet" href="expedition.css">
-  <link rel="stylesheet" href="priorities-lite.css?v=20261030-channels">
-  <style>/* Elementos internos mantidos para compatibilidade dos calculos compartilhados. */
-[data-lite-excluded], #manager-navigation { display: none !important; }
-.brand::after { content: "LITE"; font-size: 10px; font-weight: 800; letter-spacing: .12em; color: #2563eb; margin-left: 8px; }</style>
 <link rel="stylesheet" href="segment-colors.css">
 <link rel="stylesheet" href="carrier-brands.css">
 <link rel="stylesheet" href="dark-readability.css?v=20261030">
+  <style>
+    /* Administração indisponível no Lite; os elementos internos atendem ao script compartilhado. */
+    #manager-navigation, #page-relatorios, #page-sla-profiles, #page-configuracoes { display: none !important; }
+      .shipping-detail-table { border-collapse: collapse; width: 100%; min-width: 2600px; }
+    .shipping-detail-table .conference-detail-head,.shipping-detail-table .conference-detail-row { grid-template-columns: 100px 110px 160px 100px 160px 65px 65px 90px 170px 180px 110px 180px 100px 150px 150px 150px 140px; text-align: left; }
+    .shipping-detail-table th,.shipping-detail-table td { min-width: 0; overflow-wrap: anywhere; }
+  </style>
 
   <link rel="icon" type="image/svg+xml" href="assets/favicon-luft-alpargatas.svg?v=20261030">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-luft-alpargatas-32.png?v=20261030">
@@ -37,20 +39,16 @@
       <nav aria-label="Operação">
         <button type="button" class="nav-item active" data-page="dashboard"><span>▦</span>Visão geral</button>
         <button type="button" class="nav-item" data-page="gemba"><span>◫</span>GEMBA</button>
-        <button type="button" class="nav-item" data-page="prioridades"><span>&#9671;</span>Prioridades B2C</button><button type="button" class="nav-item" data-page="expedicao"><span>&#9633;</span>Expedição</button><span id="nav-triados" hidden>0</span>
+        <button type="button" class="nav-item" data-page="prioridades"><span>&#9671;</span>Prioridades B2C</button>
+        <button type="button" class="nav-item" data-page="triados"><span>□</span>Triados <b id="nav-triados">0</b></button>
         <button type="button" class="nav-item" data-page="produtividade"><span>⌁</span>Produtividade</button>
-        
-        
+        <button type="button" class="nav-item" data-page="expedicao"><span>□</span>Expedição</button>
         <button type="button" class="nav-item" data-page="pin"><span>⌖</span>Solicitação PIN</button>
-        
-        
+        <button type="button" class="nav-item" data-page="conferencia-b2c"><span>◷</span>Conferência Doca B2C</button>
+        <button type="button" class="nav-item" data-page="conferencia-b2b"><span>◷</span>Conferência B2B</button>
       </nav>
-      <div id="manager-navigation" hidden><p class="nav-title">GESTÃO</p>
-      <nav aria-label="Gestão">
-        
-        
-        
-      </nav></div>
+      <!-- Estrutura mínima preservada para inicialização do script compartilhado. -->
+      <div id="manager-navigation" hidden inert aria-hidden="true"><p class="nav-title">ADMINISTRAÇÃO</p><nav aria-label="Administração desativada"></nav></div>
       <div class="online"><i></i><div><strong>Operação online</strong><small>Processamento local ativo</small></div></div>
     </aside>
 
@@ -83,17 +81,10 @@
           <article class="card overview-summary-preview"><div class="card-head"><div><h2>Prévia da mensagem</h2><p>Texto que será enviado ao usar “Copiar resumo”</p></div></div><pre id="overview-summary-preview"></pre></article>
         </section>
 
-        <section class="page" id="page-triados" data-lite-excluded="true" hidden inert><div class="intro"><div><p>Pedidos triados pelo arquivo operacional</p><small>Detalhamento consolidado por transportadora</small></div></div><article class="card summary blue"><div class="card-head"><div><h2>Resumo de triados</h2><p>Séries 17, 14, 11 e vazia · inclui AG Resolução de Quebra</p></div></div><div class="summary-values" id="summary-triados-page"></div></article><div class="triaged-analysis-grid"><article class="card"><div class="card-head"><div><h2>Ranking por transportadora</h2><p>Ordenado da maior para a menor quantidade de volumes</p></div></div><div class="carrier-list" id="triaged-carrier-list"></div></article><article class="card"><div class="card-head"><div><h2>Pedidos e volumes por transportadora</h2><p>Comparativo em barras verticais</p></div></div><div class="bar-chart-wrap" id="triaged-carrier-chart"></div></article></div></section>
+        <section class="page" id="page-triados"><div class="intro"><div><p>Pedidos triados pelo arquivo operacional</p><small>Detalhamento consolidado por transportadora</small></div></div><article class="card summary blue"><div class="card-head"><div><h2>Resumo de triados</h2><p>Séries 17, 14, 11 e vazia · inclui AG Resolução de Quebra</p></div></div><div class="summary-values" id="summary-triados-page"></div></article><div class="triaged-analysis-grid"><article class="card"><div class="card-head"><div><h2>Ranking por transportadora</h2><p>Ordenado da maior para a menor quantidade de volumes</p></div></div><div class="carrier-list" id="triaged-carrier-list"></div></article><article class="card"><div class="card-head"><div><h2>Pedidos e volumes por transportadora</h2><p>Comparativo em barras verticais</p></div></div><div class="bar-chart-wrap" id="triaged-carrier-chart"></div></article></div></section>
 
-        <section class="page" id="page-produtividade"><div class="intro"><div><p>Produtividade de separação e bancada</p><small>Peças, pedidos e volumes por hora, turno e colaborador · B2B e B2C · inclui a madrugada</small></div></div><div id="productivity-content"></div></section>
+        <section class="page" id="page-produtividade"><div class="intro"><div><p>Produtividade de separação e bancada</p><small>Soma de produtos e pedidos conferidos por hora · 1º turno 06h–14h59 · 2º turno 15h–23h59</small></div></div><div id="productivity-content"></div></section>
 
-        <!-- GEMBA: fluxo, forecast, metas e cadastro diário de ABS. -->
-        <section class="page" id="page-expedicao">
-          <div class="intro"><div><p>Expedição</p><small>Pedidos fora de carga e cargas aguardando finalização no WMS</small><small id="shipping-updated" class="shipping-updated" role="status">Aguardando upload do CSV.</small></div><div class="actions"><button type="button" class="btn primary" id="shipping-import">Atualizar CSV</button></div></div>
-          <div class="card priority-filters"><label>Pesquisar<input type="search" id="shipping-search" placeholder="Nota, pedido, carga ou transportadora"></label><label>Categoria<select id="shipping-category"><option value="">B2B e B2C</option><option value="b2c">B2C</option><option value="b2b">B2B</option></select></label><label>Transportadora<select id="shipping-carrier"><option value="">Todas as transportadoras</option></select></label><label>Dia da conferência<input type="date" id="shipping-date"></label></div>
-          <p class="priority-notice">Status considerados: Conferência concluída, Enviado para faturamento, Faturado ou Coleta iniciada. Pendentes de finalização: Processado diferente de 1 e sem data em Processado em. B2C: VENDA OMN CHANNEL, ALOM-SPASA-VENDA FUNCION. e SPASA-REM AMC; demais classificações: B2B. Dias e horas seguem Conferido em, no horário de Brasília. Cancelados e expedidos ficam fora da visão. Dados referentes à última importação do CSV.</p>
-          <div id="shipping-content"></div>
-        </section>
         <section class="page" id="page-prioridades">
           <div class="intro"><div><p>Prioridades B2C</p><small>Pendências por canal, status e data de cadastro</small></div><div class="actions"><button type="button" class="btn primary" id="priority-import">Atualizar CSV</button></div></div>
           <div class="card priority-filters"><label>Canal<select id="priority-channel"><option value="">Todos os canais</option></select></label></div>
@@ -103,25 +94,36 @@
             <small>Soma de Qtde. de Produto por Importado em. Os quadros de prioridades usam Qtde. Total de Produto por Cadastrada em.</small><div id="priority-hours"></div>
           </article>
         </section>
+
+        <!-- GEMBA: fluxo, forecast, metas e cadastro diário de ABS. -->
         <section class="page" id="page-gemba">
           <div class="intro gemba-intro"><div><p>GEMBA</p><small id="gemba-updated">Aguardando importação do CSV</small></div><div class="actions"><button type="button" class="btn secondary" id="gemba-import">↻ Atualizar CSV</button><button type="button" class="btn primary" id="gemba-copy">▣ Copiar GEMBA</button></div></div>
           <div class="gemba-grid">
             <article class="card gemba-flow-card"><div class="card-head"><div><h2>Fluxo Operacional</h2><p>Peças por classificação e etapa operacional no arquivo atual</p></div></div><div id="gemba-flow"></div></article>
+            <article class="card gemba-goals-card"><div class="card-head"><div><h2>Meta × Produzido</h2><p>Metas diárias e produção por Conferido em</p></div></div><form id="gemba-goals-form"><div class="gemba-goal-fields"><label>Meta B2C · peças<input type="number" min="0" step="1" id="gemba-meta-b2c" inputmode="numeric"></label><label>Meta B2B · peças<input type="number" min="0" step="1" id="gemba-meta-b2b" inputmode="numeric"></label></div><button class="btn primary" type="submit" id="gemba-save-goals">Salvar metas</button><small id="gemba-goals-access"></small></form></article>
+            <article class="card gemba-forecast-card"><div class="card-head"><div><h2>Necessidade para atingir o forecast</h2><p>Compensações calculadas somente sobre as metas originais</p></div></div><div id="gemba-forecast"></div></article>
+            <article class="card gemba-abs-card"><div class="card-head"><div><h2>ABS</h2><p id="gemba-abs-count">ABS: 0</p></div><button type="button" class="btn secondary" id="gemba-add-abs">＋ Adicionar ABS</button></div><div id="gemba-abs-list"></div></article>
             <article class="card gemba-summary-card"><div class="card-head"><div><h2>Resumo do GEMBA</h2><p>Prévia do texto compartilhável</p></div></div><pre id="gemba-summary-preview"></pre></article>
           </div>
         </section>
 
         <!-- SLA: os IDs abaixo são atualizados por renderSlaCentral(). -->
-        <section class="page" id="page-transportadoras" data-lite-excluded="true" hidden inert><div class="ex-intro"><div><span class="ex-kicker">LUFT · STATUS OPERACIONAL / EXPEDIÇÃO</span><h2>Controle diário de transportadoras</h2><p>Acompanhamento de chegada, entrada e saída do CD</p></div><div class="ex-header-actions"><button type="button" class="btn secondary" id="ex-export">↓ Exportar CSV</button><label class="ex-date">Data da operação<input id="ex-date" type="date" aria-label="Data operacional"></label><button type="button" class="btn secondary" id="pickup-go-settings">⚙ Cadastrar horários</button></div></div><div id="pickup-dashboard"></div></section>
+        <section class="page" id="page-expedicao">
+          <div class="intro"><div><p>Expedição</p><small>Pedidos fora de carga e cargas aguardando finalização no WMS</small><small id="shipping-updated" class="shipping-updated" role="status">Aguardando upload do CSV.</small></div><div class="actions"><button type="button" class="btn primary" id="shipping-import">Atualizar CSV</button></div></div>
+          <div class="card priority-filters"><label>Pesquisar<input type="search" id="shipping-search" placeholder="Nota, pedido, carga ou transportadora"></label><label>Categoria<select id="shipping-category"><option value="">B2B e B2C</option><option value="b2c">B2C</option><option value="b2b">B2B</option></select></label><label>Transportadora<select id="shipping-carrier"><option value="">Todas as transportadoras</option></select></label><label>Dia da conferência<input type="date" id="shipping-date"></label></div>
+          <p class="priority-notice">Status considerados: Conferência concluída, Enviado para faturamento, Faturado ou Coleta iniciada. Pendentes de finalização: Processado diferente de 1 e sem data em Processado em. B2C: VENDA OMN CHANNEL, ALOM-SPASA-VENDA FUNCION. e SPASA-REM AMC; demais classificações: B2B. Dias e horas seguem Conferido em, no horário de Brasília. Cancelados e expedidos ficam fora da visão. Dados referentes à última importação do CSV.</p>
+          <div id="shipping-content"></div>
+        </section>
+        <section class="page" id="page-transportadoras"><div class="ex-intro"><div><span class="ex-kicker">LUFT · STATUS OPERACIONAL / EXPEDIÇÃO</span><h2>Controle diário de transportadoras</h2><p>Acompanhamento de chegada, entrada e saída do CD</p></div><div class="ex-header-actions"><button type="button" class="btn secondary" id="ex-export">↓ Exportar CSV</button><label class="ex-date">Data da operação<input id="ex-date" type="date" aria-label="Data operacional"></label><button type="button" class="btn secondary" id="pickup-go-settings">⚙ Cadastrar horários</button></div></div><div id="pickup-dashboard"></div></section>
         <section class="page" id="page-pin"><div class="intro"><div><p>Solicitações PIN</p><small>FL Brasil e MANAUS · pedidos separados por carga para os estados atendidos</small></div></div><div class="pin-groups" id="pin-table-page"></div></section>
-        <section class="page conference-screen" id="page-conferencia-b2c" data-lite-excluded="true" hidden inert><div class="intro"><div><p>Conferência Doca · B2C</p><small>Série 17 · pedidos sem carga organizados por transportadora</small></div><div class="conference-overview" id="b2c-conference-summary"></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2C por dia e hora</h2><p>Passe o cursor sobre uma célula para consultar os detalhes</p></div><span class="conference-format">Célula = pedidos</span></div><div class="matrix-wrap" id="b2c-table"></div></article></section>
-        <section class="page conference-screen" id="page-conferencia-b2b" data-lite-excluded="true" hidden inert><div class="intro"><div><p>Conferência Doca · B2B</p><small>Séries 14 e vazia · pedidos sem carga organizados por transportadora</small></div><div class="conference-overview" id="b2b-conference-summary"></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2B por dia e hora</h2><p>Passe o cursor sobre uma célula para consultar pedidos e volumes</p></div><span class="conference-format">Célula = pedidos (volumes)</span></div><div class="matrix-wrap" id="b2b-table"></div></article></section>
-        <section class="page placeholder" id="page-relatorios" data-lite-excluded="true" hidden inert><div class="empty-icon">↗</div><h2>Relatórios</h2><p>Use “Exportar resumo” para baixar os indicadores atuais.</p></section>
+        <section class="page conference-screen" id="page-conferencia-b2c"><div class="intro"><div><p>Conferência Doca · B2C</p><small>Série 17 · pedidos sem carga organizados por transportadora</small></div><div class="conference-overview" id="b2c-conference-summary"></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2C por dia e hora</h2><p>Passe o cursor sobre uma célula para consultar os detalhes</p></div><span class="conference-format">Célula = pedidos</span></div><div class="matrix-wrap" id="b2c-table"></div></article></section>
+        <section class="page conference-screen" id="page-conferencia-b2b"><div class="intro"><div><p>Conferência Doca · B2B</p><small>Séries 14 e vazia · pedidos sem carga organizados por transportadora</small></div><div class="conference-overview" id="b2b-conference-summary"></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2B por dia e hora</h2><p>Passe o cursor sobre uma célula para consultar pedidos e volumes</p></div><span class="conference-format">Célula = pedidos (volumes)</span></div><div class="matrix-wrap" id="b2b-table"></div></article></section>
+        <section class="page placeholder" id="page-relatorios" hidden inert aria-hidden="true"><div class="empty-icon">↗</div><h2>Relatórios</h2><p>Use “Exportar resumo” para baixar os indicadores atuais.</p></section>
         <!--
           Perfil SLA V5. Ao adicionar um campo, atualize também profileFromForm(),
           editSlaProfile(), profileRuleSummary() e slaProfileDeadline().
         -->
-        <section class="page" id="page-sla-profiles" data-lite-excluded="true" hidden inert>
+        <section class="page" id="page-sla-profiles" hidden inert aria-hidden="true">
           <div class="intro"><div><p>Perfis de prioridade SLA</p><small>Defina os limites de importação e expedição de cada serviço</small></div><div class="actions"><button type="button" class="btn secondary" data-export-page>↓ Exportar imagem</button><button type="button" class="btn primary" id="sla-profile-new">＋ Novo perfil</button></div></div>
           <div class="sla-profile-layout">
             <article class="card sla-profile-editor">
@@ -151,7 +153,7 @@
             <article class="card sla-profile-list-card"><div class="card-head"><div><h2>Perfis cadastrados</h2><p id="sla-profile-count">0 perfis</p></div></div><div class="profile-table" id="sla-profile-list"></div></article>
           </div>
         </section>
-        <section class="page" id="page-configuracoes" data-lite-excluded="true" hidden inert><div class="intro"><div><p>Configurações</p><small>Parâmetros locais do Luft Status Operacional</small></div></div><article class="card"><div class="card-head"><div><h2>Grade de coleta das transportadoras</h2><p>Cadastre um ou mais horários por dia, separados por vírgula</p></div></div><div class="pickup-form"><div class="sla-field"><label>Nome da transportadora · dados do CSV</label><select id="pickup-carrier"><option value="">Importe o CSV para listar</option></select></div><div class="pickup-days-form" id="pickup-days-form"><div class="sla-field"><label>Domingo</label><input type="text" data-pickup-day="0" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Segunda</label><input type="text" data-pickup-day="1" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Terça</label><input type="text" data-pickup-day="2" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Quarta</label><input type="text" data-pickup-day="3" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Quinta</label><input type="text" data-pickup-day="4" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Sexta</label><input type="text" data-pickup-day="5" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Sábado</label><input type="text" data-pickup-day="6" placeholder="Ex.: 10:00, 16:00"></div></div><p class="pickup-help">Horários válidos: HH:MM. Deixe o dia vazio quando não houver coleta. Ao selecionar uma transportadora já cadastrada, os horários serão carregados para edição.</p><div class="actions pickup-form-actions"><button type="button" class="btn primary" id="pickup-save">Salvar grade</button><button type="button" class="btn secondary" id="pickup-clear-form">Limpar</button></div><div class="pickup-saved-list" id="pickup-saved-list"></div></div></article></section>
+        <section class="page" id="page-configuracoes" hidden inert aria-hidden="true"><div class="intro"><div><p>Configurações</p><small>Parâmetros locais do Luft Status Operacional</small></div></div><article class="card"><div class="card-head"><div><h2>Grade de coleta das transportadoras</h2><p>Cadastre um ou mais horários por dia, separados por vírgula</p></div></div><div class="pickup-form"><div class="sla-field"><label>Nome da transportadora · dados do CSV</label><select id="pickup-carrier"><option value="">Importe o CSV para listar</option></select></div><div class="pickup-days-form" id="pickup-days-form"><div class="sla-field"><label>Domingo</label><input type="text" data-pickup-day="0" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Segunda</label><input type="text" data-pickup-day="1" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Terça</label><input type="text" data-pickup-day="2" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Quarta</label><input type="text" data-pickup-day="3" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Quinta</label><input type="text" data-pickup-day="4" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Sexta</label><input type="text" data-pickup-day="5" placeholder="Ex.: 10:00, 16:00"></div><div class="sla-field"><label>Sábado</label><input type="text" data-pickup-day="6" placeholder="Ex.: 10:00, 16:00"></div></div><p class="pickup-help">Horários válidos: HH:MM. Deixe o dia vazio quando não houver coleta. Ao selecionar uma transportadora já cadastrada, os horários serão carregados para edição.</p><div class="actions pickup-form-actions"><button type="button" class="btn primary" id="pickup-save">Salvar grade</button><button type="button" class="btn secondary" id="pickup-clear-form">Limpar</button></div><div class="pickup-saved-list" id="pickup-saved-list"></div></div></article></section>
       </div>
       <footer><span><i></i> <span id="footer-update">Aguardando importação</span></span><span>Turno A · CD Extrema</span></footer>
     </main>
@@ -162,13 +164,20 @@
   <div class="processing" id="processing"><div class="spinner"></div><strong id="processing-title">Preparando importação…</strong><small id="processing-detail">A última base válida continuará disponível até a conclusão.</small><div class="processing-steps" id="processing-steps" aria-live="polite"></div></div>
   <button type="button" class="sla-drawer-backdrop" id="sla-drawer-backdrop" aria-label="Fechar detalhamento"></button><aside class="sla-drawer" id="sla-drawer" aria-label="Detalhamento de pedidos"><div class="drawer-head"><div><small id="sla-drawer-kicker">DETALHAMENTO</small><h2 id="sla-drawer-title">Pedidos</h2><small id="sla-drawer-subtitle"></small></div><button type="button" class="drawer-close" id="sla-drawer-close">×</button></div><div class="drawer-body" id="sla-drawer-body"></div></aside>
   <div class="gemba-modal-backdrop" id="gemba-abs-modal" aria-hidden="true" inert><section class="gemba-modal" role="dialog" aria-modal="true" aria-labelledby="gemba-abs-title"><button class="auth-close" id="gemba-abs-close" type="button">×</button><small>GEMBA · ABS</small><h2 id="gemba-abs-title">Adicionar ABS</h2><form id="gemba-abs-form"><input type="hidden" id="gemba-abs-id"><label>Nome do colaborador<input type="text" id="gemba-abs-name" maxlength="120" autocomplete="off" required></label><label>Tipo<select id="gemba-abs-type" required><option value="">Selecione</option><option>Falta injustificada</option><option>Atestado</option><option>Declaração</option><option>Ausente</option></select></label><p class="auth-error" id="gemba-abs-error"></p><div class="gemba-modal-actions"><button class="btn secondary" id="gemba-abs-cancel" type="button">Cancelar</button><button class="btn primary" type="submit">Salvar</button></div></form></section></div>
-  <script src="carrier-brands.js"></script><script src="segment-colors.js"></script><script src="screen-image.js"></script><script src="browser-data.js"></script>
+  <script src="carrier-brand-images.js"></script><script src="carrier-brands.js?v=20261030-export"></script><script src="segment-colors.js"></script><script src="screen-image.js?v=20261030-validated"></script><script src="browser-data.js?v=20261030-validated"></script>
     <script src="sla-engine.js"></script>
     <script src="expedition-engine.js"></script>
     <script src="expedition.js"></script>
-    <script src="priorities-lite.js"></script>
-    <script src="shipping-lite.js?v=20261030-channels"></script>
-    <script src="productivity-lite.js?v=20261030-period"></script>
-    <script src="script-lite.js"></script>
+    <script src="priorities-lite.js"></script><script src="shipping-lite.js?v=20261030-channels"></script><script src="productivity-lite.js?v=20261030-validated"></script><script src="script.js?v=20261105-prioridades"></script>
+  <script>
+    // Bloqueia também o acesso direto às antigas rotas administrativas.
+    const liteNavigateOperationalPage = navigateToPage;
+    navigateToPage = function(page, options = {}) {
+      if (['relatorios', 'sla-profiles', 'configuracoes'].includes(page)) {
+        return liteNavigateOperationalPage('dashboard', { ...options, replaceHash: true });
+      }
+      return liteNavigateOperationalPage(page, options);
+    };
+  </script>
 </body>
 </html>
