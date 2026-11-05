@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="expedition.css">
 <link rel="stylesheet" href="segment-colors.css">
 <link rel="stylesheet" href="carrier-brands.css">
-<link rel="stylesheet" href="dark-readability.css?v=20261030">
+<link rel="stylesheet" href="dark-readability.css?v=20261105-sync">
   <style>
     /* Administração indisponível no Lite; os elementos internos atendem ao script compartilhado. */
     #manager-navigation, #page-relatorios, #page-sla-profiles, #page-configuracoes { display: none !important; }
@@ -18,11 +18,11 @@
     .shipping-detail-table th,.shipping-detail-table td { min-width: 0; overflow-wrap: anywhere; }
   </style>
 
-  <link rel="icon" type="image/svg+xml" href="assets/favicon-luft-alpargatas.svg?v=20261030">
-  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-luft-alpargatas-32.png?v=20261030">
-  <link rel="shortcut icon" href="assets/favicon-luft-alpargatas.ico?v=20261030">
-  <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon-luft-alpargatas-180.png?v=20261030">
-  <link rel="stylesheet" href="brand.css?v=20261030">
+  <link rel="icon" type="image/svg+xml" href="favicon-luft-alpargatas.svg?v=20261030">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-luft-alpargatas-32.png?v=20261030">
+  <link rel="shortcut icon" href="favicon-luft-alpargatas.ico?v=20261030">
+  <link rel="apple-touch-icon" sizes="180x180" href="favicon-luft-alpargatas-180.png?v=20261030">
+  <link rel="stylesheet" href="brand.css?v=20261105-sync">
 </head>
 <body>
   <!--
@@ -34,7 +34,7 @@
   -->
   <div class="app">
     <aside class="sidebar" id="sidebar" aria-label="Menu principal">
-      <div class="brand"><img class="logo" src="assets/brand-luft-alpargatas.svg?v=20261030" width="440" height="112" alt="Luft Logistics e Alpargatas"><div><strong>LUFT</strong><small>Status operacional</small></div></div>
+      <div class="brand"><img class="logo" src="brand-luft-alpargatas.svg?v=20261030" width="440" height="112" alt="Luft Logistics e Alpargatas"><div><strong>LUFT</strong><small>Status operacional</small></div></div>
       <p class="nav-title">OPERAÇÃO</p>
       <nav aria-label="Operação">
         <button type="button" class="nav-item active" data-page="dashboard"><span>▦</span>Visão geral</button>
@@ -164,11 +164,11 @@
   <div class="processing" id="processing"><div class="spinner"></div><strong id="processing-title">Preparando importação…</strong><small id="processing-detail">A última base válida continuará disponível até a conclusão.</small><div class="processing-steps" id="processing-steps" aria-live="polite"></div></div>
   <button type="button" class="sla-drawer-backdrop" id="sla-drawer-backdrop" aria-label="Fechar detalhamento"></button><aside class="sla-drawer" id="sla-drawer" aria-label="Detalhamento de pedidos"><div class="drawer-head"><div><small id="sla-drawer-kicker">DETALHAMENTO</small><h2 id="sla-drawer-title">Pedidos</h2><small id="sla-drawer-subtitle"></small></div><button type="button" class="drawer-close" id="sla-drawer-close">×</button></div><div class="drawer-body" id="sla-drawer-body"></div></aside>
   <div class="gemba-modal-backdrop" id="gemba-abs-modal" aria-hidden="true" inert><section class="gemba-modal" role="dialog" aria-modal="true" aria-labelledby="gemba-abs-title"><button class="auth-close" id="gemba-abs-close" type="button">×</button><small>GEMBA · ABS</small><h2 id="gemba-abs-title">Adicionar ABS</h2><form id="gemba-abs-form"><input type="hidden" id="gemba-abs-id"><label>Nome do colaborador<input type="text" id="gemba-abs-name" maxlength="120" autocomplete="off" required></label><label>Tipo<select id="gemba-abs-type" required><option value="">Selecione</option><option>Falta injustificada</option><option>Atestado</option><option>Declaração</option><option>Ausente</option></select></label><p class="auth-error" id="gemba-abs-error"></p><div class="gemba-modal-actions"><button class="btn secondary" id="gemba-abs-cancel" type="button">Cancelar</button><button class="btn primary" type="submit">Salvar</button></div></form></section></div>
-  <script src="carrier-brand-images.js"></script><script src="carrier-brands.js?v=20261030-export"></script><script src="segment-colors.js"></script><script src="screen-image.js?v=20261030-validated"></script><script src="browser-data.js?v=20261030-validated"></script>
+  <script src="carrier-brand-images.js"></script><script src="carrier-brands.js?v=20261105-sync"></script><script src="segment-colors.js"></script><script src="screen-image.js?v=20261105-sync"></script><script src="browser-data.js?v=20261105-sync"></script>
     <script src="sla-engine.js"></script>
     <script src="expedition-engine.js"></script>
     <script src="expedition.js"></script>
-    <script src="priorities-lite.js"></script><script src="shipping-lite.js?v=20261030-channels"></script><script src="productivity-lite.js?v=20261030-validated"></script><script src="script.js?v=20261105-prioridades"></script>
+    <script src="priorities-lite.js"></script><script src="shipping-lite.js?v=20261030-channels"></script><script src="productivity-lite.js?v=20261105-sync"></script><script src="script.js?v=20261105-sync"></script>
   <script>
     // Bloqueia também o acesso direto às antigas rotas administrativas.
     const liteNavigateOperationalPage = navigateToPage;

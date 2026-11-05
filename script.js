@@ -323,11 +323,13 @@ function calculateMetrics(csvText, fileName, onProgress) {
         imported: column("Importado em"), registered: column("Cadastrada em"), client: column("Destinatário"), cancelledAt: column("Cancelado em"),
         skuQty: column("Qtde. de Produto"), separatedAt: column("Separado em"), billedAt: column("Faturado em"), conferenceAt: column("Conferido em"), conferenceStarted: column("Conferência Iniciada"),
         separationUser: ["Usuário da Separação", "Usuário Separação", "Separado por", "Separador"].map(column).find(i=>i>=0) ?? -1,
+        conferenceUser: ["Usuário da Conferência", "Usuário Conferência", "Usuário de Conferência", "Conferido por", "Conferente"].map(column).find(i=>i>=0) ?? -1,
         serviceCode: column("Código do Serviço"), weighingUser: column("Usuário da Pesagem"), shipment: column("Título Romaneio"), orderClassification: column("Classificação Tipo Pedido")
       };
       const slaCentralRequired=[["Série",indexes.series],["Status da Nota Fiscal",indexes.status],["Importado em",indexes.imported]];
       if(indexes.invoice<0&&indexes.order<0)slaCentralRequired.push(["Nota Fiscal ou Pedido de Venda",-1]);
       if(indexes.marketplace<0&&indexes.service<0&&indexes.modality<0)slaCentralRequired.push(["Marketplace, Serviço da Transportadora ou Modalidade",-1]);
+      metrics.priorityMissingColumns=[["Classificação Tipo Pedido",indexes.orderClassification],["Serviço da Transportadora",indexes.service],["Marketplace",indexes.marketplace],["Cadastrada em",indexes.registered],["Importado em",indexes.imported],["Qtde. de Produto",indexes.skuQty]].filter(item=>item[1]<0).map(item=>item[0]);
       metrics.slaCentralDiagnostics.missingColumns=slaCentralRequired.filter(item=>item[1]<0).map(item=>item[0]);
       const required = [["Pedido de Venda",indexes.order],["Série",indexes.series],["Status da Nota Fiscal",indexes.status],["Processado",indexes.processed],["Processado em",indexes.processedAt],["Qtde. de Volumes",indexes.volumes],["Qtde. Total de Produto",indexes.products],["Carga",indexes.load],["Transportadora",indexes.carrier]];
       const missing=required.filter(item=>item[1]<0).map(item=>item[0]);
@@ -369,6 +371,9 @@ function calculateMetrics(csvText, fileName, onProgress) {
       const gembaImportedAt = parseBrazilianDateTime(gembaImportedRaw);
       const gembaSegment = isB2c ? "b2c" : "b2b";
       metrics.gembaOrders.push({
+        conferenceUser:indexes.conferenceUser>=0?(values[indexes.conferenceUser]||"").trim():"",
+        service:indexes.service>=0?(values[indexes.service]||"").trim():"", marketplace:indexes.marketplace>=0?(values[indexes.marketplace]||"").trim():"", registeredStamp:parseBrazilianDateTime(values[indexes.registered])?.getTime()||0, actualImportedStamp:parseBrazilianDateTime(values[indexes.imported])?.getTime()||0,
+        invoice:indexes.invoice>=0?(values[indexes.invoice]||"").trim():"", client:indexes.client>=0?(values[indexes.client]||"").trim():"", volumes,
         separationUser:indexes.separationUser>=0?(values[indexes.separationUser]||"").trim():"", separatedStamp:parseBrazilianDateTime(values[indexes.separatedAt])?.getTime()||0, weighedStamp:parseBrazilianDateTime(weighedAt)?.getTime()||0, weighingUser:indexes.weighingUser>=0?(values[indexes.weighingUser]||"").trim():"",
         order, segment:gembaSegment||"other", series:series || "Vazia", wave:indexes.wave >= 0 ? (values[indexes.wave] || "").trim() : "",
         waveId:indexes.waveId >= 0 ? (values[indexes.waveId] || "").trim() : "", status:(values[indexes.status] || "").trim(),
@@ -1158,6 +1163,7 @@ function render(metrics) {
   $("#b2b-conference-summary").innerHTML = conferenceSummaryHtml(metrics.b2bHourly, true);
   $("#pin-table-page").innerHTML = pinHtml(metrics.pinDetails);
   window.LiteProductivity.render(metrics);
+  window.LitePriorities.render(metrics);
   window.LiteShipping.render(metrics);
   $("#file-info").textContent = metrics.fileName
     ? metrics.fileName + " · " + fmt(metrics.recordCount) + " registros · Última atualização: " + window.BrowserData.updatedLabel(metrics)

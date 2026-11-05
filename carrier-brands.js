@@ -13,7 +13,7 @@ window.CarrierBrands=(()=>{
  const find=value=>brands.find(brand=>brand.match.test(normal(value)));
  const src=value=>{const brand=find(value);return brand?''+brand.file:''};
  let readyPromise;
- function ready(){return readyPromise||=(Promise.all(brands.map(brand=>new Promise(resolve=>{const img=new Image();img.onload=()=>{brand.image=img;resolve()};img.onerror=()=>resolve();img.src=''+brand.file}))))}
+ function ready(){return readyPromise||=(Promise.all(brands.map(brand=>new Promise(resolve=>{const img=new Image();img.onload=()=>{brand.image=img;resolve()};img.onerror=()=>resolve();img.src=window.CarrierBrandImages?.[brand.file]||''+brand.file}))))}
  function draw(ctx,value,x,y,size,align){const brand=find(value);if(!brand?.image||align==='right'||align==='center')return x;const h=Math.min(28,size*1.5),w=64;ctx.save();ctx.fillStyle='#ffffff';ctx.fillRect(x,y-h+3,w,h+6);const scale=Math.min((w-6)/brand.image.naturalWidth,(h-2)/brand.image.naturalHeight);ctx.drawImage(brand.image,x+(w-brand.image.naturalWidth*scale)/2,y-h+5+(h-2-brand.image.naturalHeight*scale)/2,brand.image.naturalWidth*scale,brand.image.naturalHeight*scale);ctx.restore();return x+w+8}
  function decorate(root){
   const candidates=[...(root.matches?.('td,th,strong,.matrix-title img')?[root]:[]),...root.querySelectorAll('td,th,strong,.matrix-title img')];

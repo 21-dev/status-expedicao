@@ -5,12 +5,14 @@ window.BrowserData = (() => {
   async function read(){const db=await database();try{return await new Promise((resolve,reject)=>{const request=db.transaction('data').objectStore('data').get('metrics');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})}finally{db.close()}}
   function updatedLabel(metrics){
     const stamp=Date.parse(metrics.slaCentralImportedAt||'');
-    return Number.isFinite(stamp)?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(stamp))+' (Brasília)':(metrics.importedAt||'Hor?rio n?o registrado');
+    return Number.isFinite(stamp)?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(stamp))+' (Brasília)':(metrics.importedAt||'Horário não registrado');
   }
   function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
   function snapshot(page){
     const root=document.getElementById(page),clone=root.cloneNode(true);
+    const labels=[...root.querySelectorAll('label')],hiddenLabels=[...clone.querySelectorAll('label')].filter((el,i)=>getComputedStyle(labels[i]).display==='none');
     clone.querySelectorAll('input,select').forEach((el,i)=>{const original=root.querySelectorAll('input,select')[i];el.replaceWith(document.createTextNode(original.type==='checkbox'?(original.checked?'Sim':'N\u00e3o'):original.selectedOptions?.[0]?.textContent||original.value))});
+    hiddenLabels.forEach(el=>el.remove());
     clone.querySelectorAll('[data-screen-export],.prod-chart-scroll').forEach(el=>el.remove());
     const rows=[];
     function walk(node){if(node.tagName==='TABLE'){node.querySelectorAll('tr').forEach(tr=>rows.push([...tr.cells].map(c=>c.textContent.trim())));rows.push([]);return}if(node.children?.length){for(const child of node.childNodes)walk(child)}else if(node.textContent?.trim())rows.push([node.textContent.trim()])}

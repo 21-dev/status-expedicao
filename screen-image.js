@@ -10,7 +10,7 @@ window.exportStyledScreen = async function(page, name, download) {
   function wrap(value,width,size=16){ctx.font='500 '+size+'px "Segoe UI",Arial';const lines=[];let line='';for(const word of String(value).trim().split(/\s+/)){if(line&&ctx.measureText(line+' '+word).width>width){lines.push(line);line=''}for(const char of word){if(ctx.measureText(line+char).width>width){lines.push(line);line=''}line+=char}line+=' '}if(line.trim())lines.push(line.trim());return lines.length?lines:['']}
   const clean=el=>el?.textContent.replace(/\s+/g,' ').trim()||'';
   const title=page==='page-produtividade'?'Produtividade':'Expedi\u00e7\u00e3o';
-  const filters=[...root.querySelectorAll('input:not([type=file]),select')].map(el=>{if(el.type==='checkbox')return el.checked?clean(el.parentElement):'';const label=el.closest('label')?.firstChild?.textContent?.trim()||el.getAttribute('aria-label')||'';return (label?label+': ':'')+(el.selectedOptions?.[0]?.textContent||el.value||'Todos')}).filter(Boolean).join('  |  ');
+  const filters=[...root.querySelectorAll('input:not([type=file]),select')].filter(el=>getComputedStyle(el).display!=='none'&&(!el.closest('label')||getComputedStyle(el.closest('label')).display!=='none')).map(el=>{if(el.type==='checkbox')return el.checked?clean(el.parentElement):'';const label=el.closest('label')?.firstChild?.textContent?.trim()||el.getAttribute('aria-label')||'';return (label?label+': ':'')+(el.selectedOptions?.[0]?.textContent||el.value||'Todos')}).filter(Boolean).join('  |  ');
   function header(){ctx.fillStyle=c.background;ctx.fillRect(0,0,1800,2400);text('LUFT \u00b7 STATUS OPERACIONAL',70,68,18,c.blue,800);text(title,70,122,40,c.text,800);text('Arquivo: '+(typeof currentMetrics!=='undefined'?currentMetrics.fileName:''),70,158,16,c.muted);ctx.textAlign='right';text(new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),1730,82,15,c.muted,600);ctx.textAlign='left';y=205}
   function finish(){text('Dados processados localmente \u00b7 CD Extrema  |  '+(pages.length+1),70,y+40,14,c.muted);const output=document.createElement('canvas');output.width=1800;output.height=y+75;output.getContext('2d').drawImage(canvas,0,0);pages.push(output)}
   function space(height){if(y+height>2300){finish();header();return true}return false}
@@ -35,15 +35,15 @@ window.exportStyledScreen = async function(page, name, download) {
       });y+=250;
     }
   }
-  for(const card of root.querySelectorAll('.prod-segments article,.prod-block,.shipping-grid article,.shipping-loaded')){
+  for(const card of root.querySelectorAll('.prod-segments article,.prod-block,.shipping-grid article,.shipping-loaded,.shipping-channel-section .priority-card')){
     const cardTitle=clean(card.querySelector('h2')),subtitle=clean(card.querySelector('.card-head p'));heading(cardTitle,subtitle);
-    const values=[...card.querySelectorAll('.prod-segment-values>div,.shipping-summary>div')];
+    const values=[...card.querySelectorAll(':scope > .prod-segment-values>div,:scope > .shipping-summary>div')];
     if(values.length){space(130);const width=(1660-20*(values.length-1))/values.length;values.forEach((value,i)=>{const x=70+i*(width+20);rect(x,y,width,108);text(clean(value.querySelector('small')).toUpperCase(),x+24,y+33,14,c.muted,700);text(clean(value.querySelector('strong')),x+24,y+80,32,c.text,800)});y+=130}
     const chart=card.querySelector('.prod-chart');
     if(chart){space(290);rect(70,y,1660,265);const hours=[...chart.querySelectorAll('.prod-hour')],values=hours.map(hour=>[...hour.querySelectorAll('.prod-bar')].map(bar=>parseFloat(bar.style.height)||0));for(let h=0;h<24;h++){const x=112+h*65;values[h]?.forEach((value,i)=>{ctx.fillStyle=i?DeliveryColors.b2b:c.blue;ctx.fillRect(x+i*21,y+215-value*1.8,18,value*1.8)});text(String(h).padStart(2,'0')+'h',x,y+244,13,c.muted)}text('B2C',1500,y+28,14,c.blue,700);text('B2B',1580,y+28,14,DeliveryColors.b2b,700);y+=290}
     // Productivity reports end after the hourly chart.
     if(page==='page-produtividade'&&chart)break;
-    for(const table of (chart?[]:card.querySelectorAll('table'))){
+    for(const table of (chart||card.classList.contains('shipping-loaded')?[]:card.querySelectorAll('table'))){
       const headers=[...table.querySelectorAll('thead th')].map(clean),n=headers.length;if(!n)continue;
       const width=1660/n;
       function tableHeader(){const lines=headers.map(value=>wrap(value,width-24,14)),height=Math.max(...lines.map(v=>v.length))*20+24;rect(70,y,1660,height,dark?'#1c2b43':'#e8eef7',null);lines.forEach((values,i)=>values.forEach((value,j)=>text(value,82+i*width,y+24+j*20,14,c.text,700)));y+=height}
@@ -59,7 +59,7 @@ window.exportStyledScreen = async function(page, name, download) {
       }
       y+=24;
     }
-    const empty=card.querySelector('.empty-state');if(empty){space(60);text(clean(empty),100,y+25,16,c.muted);y+=60}
+    const empty=card.classList.contains('shipping-loaded')?null:card.querySelector('.empty-state');if(empty){space(60);text(clean(empty),100,y+25,16,c.muted);y+=60}
     y+=12;
   }
   finish();
