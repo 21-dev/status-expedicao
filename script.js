@@ -380,7 +380,7 @@ function calculateMetrics(csvText, fileName, onProgress) {
         products, skus:indexes.skuQty >= 0 ? Number(String(values[indexes.skuQty] || "0").replace(",",".")) || 0 : 0,
         separatedAt:indexes.separatedAt >= 0 ? (values[indexes.separatedAt] || "").trim() : "", billedAt:indexes.billedAt >= 0 ? (values[indexes.billedAt] || "").trim() : "", weighedAt, conferenceAt, conferenceStamp:parseBrazilianDateTime(conferenceAt)?.getTime()||0,
         conferenceStarted:indexes.conferenceStarted >= 0 ? (values[indexes.conferenceStarted] || "").trim() === "1" : false,
-        processed:isProcessed, importedStamp:gembaImportedAt ? gembaImportedAt.getTime() : 0, carrier, load,
+        processed:isProcessed, processedAt, importedStamp:gembaImportedAt ? gembaImportedAt.getTime() : 0, carrier, load,
         orderClassification:indexes.orderClassification>=0?(values[indexes.orderClassification]||"").trim():""
       });
     }
@@ -1074,12 +1074,12 @@ async function exportConferenceImage(){
   await window.CarrierBrands.ready();
   const rows=conferenceRows(),canvas=document.createElement("canvas"),rowHeight=44;canvas.width=1800;canvas.height=Math.max(500,210+rows.length*rowHeight);
   const context=canvas.getContext("2d");if(!context)return showToast("Não foi possível gerar a imagem.",true);
-  const dark=document.body.dataset.theme==="dark",bg=dark?"#0b1220":"#f4f6f9",panel=dark?"#111b2e":"#fff",ink=dark?"#e8eef9":"#172033",muted=dark?"#91a0b5":"#738095",line=dark?"#29364a":"#e2e7ee";
+  const dark=document.body.dataset.theme==="dark",{background:bg,panel,text:ink,muted,line}=window.ReportImageTheme.colors();
   const columns=[50,200,360,590,750,1100,1320,1680],widths=[135,140,210,140,330,200,330,70];
   context.fillStyle=bg;context.fillRect(0,0,canvas.width,canvas.height);
   const text=(value,x,y,size,color,weight)=>{context.fillStyle=deliveryColor(value,color);context.font=(weight||500)+" "+size+'px "Segoe UI",Arial';context.textBaseline="middle";context.fillText(String(value||"—"),window.CarrierBrands.draw(context,value,x,y,size),y)};
-  text("LUFT · PENDENTES DE CONFERÊNCIA",50,48,18,"#3b82f6",800);text(conferenceUi.title,50,90,26,ink,800);text(fmt(conferenceUi.details.length)+" pedidos",50,125,14,muted,600);
-  rows.forEach((row,index)=>{const y=165+index*rowHeight;context.fillStyle=index===0?(dark?"#17243a":"#eaf0f8"):(index%2?panel:bg);context.fillRect(35,y-rowHeight/2+2,1730,rowHeight-4);row.forEach((value,column)=>{let result=String(value||"—");context.font=(index===0?800:600)+" "+(index===0?10:11)+'px "Segoe UI",Arial';while(result.length>3&&context.measureText(result).width>widths[column])result=result.slice(0,-1);if(result!==String(value||"—"))result=result.slice(0,-1)+"…";text(result,columns[column],y,index===0?10:11,index===0?muted:ink,index===0?800:600)});context.strokeStyle=line;context.beginPath();context.moveTo(35,y+rowHeight/2);context.lineTo(1765,y+rowHeight/2);context.stroke()});
+  window.ReportImageTheme.header(context,conferenceUi.title,fmt(conferenceUi.details.length)+' pedidos',35,18,122);
+  rows.forEach((row,index)=>{const y=165+index*rowHeight;context.fillStyle=index===0?"#082b57":(index%2?panel:bg);context.fillRect(35,y-rowHeight/2+2,1730,rowHeight-4);row.forEach((value,column)=>{let result=String(value||"—");context.font=(index===0?800:600)+" "+(index===0?10:11)+'px "Segoe UI",Arial';while(result.length>3&&context.measureText(result).width>widths[column])result=result.slice(0,-1);if(result!==String(value||"—"))result=result.slice(0,-1)+"…";text(result,columns[column],y,index===0?10:11,index===0?"#ffffff":ink,index===0?800:600)});context.strokeStyle=line;context.beginPath();context.moveTo(35,y+rowHeight/2);context.lineTo(1765,y+rowHeight/2);context.stroke()});
   canvas.toBlob(blob=>{if(!blob)return showToast("Não foi possível gerar a imagem.",true);const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="pendentes-conferencia-"+new Date().toISOString().slice(0,10)+".png";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast("Lista de conferência exportada como imagem.")},"image/png")
 }
 
@@ -1164,7 +1164,8 @@ function render(metrics) {
   $("#pin-table-page").innerHTML = pinHtml(metrics.pinDetails);
   window.LiteProductivity.render(metrics);
   window.LitePriorities.render(metrics);
-  window.LiteShipping.render(metrics);
+  window.ProductImports?.render(metrics);
+
   $("#file-info").textContent = metrics.fileName
     ? metrics.fileName + " · " + fmt(metrics.recordCount) + " registros · Última atualização: " + window.BrowserData.updatedLabel(metrics)
     : "Importe a exportação operacional para calcular os indicadores";
@@ -1238,14 +1239,7 @@ async function exportDashboardImage() {
   if (!context) { setExportBusy(false); return showToast("O navegador não oferece suporte à exportação.", true); }
 
   const dark = document.body.dataset.theme === "dark";
-  const colors = {
-    background: dark ? "#0b1220" : "#f4f6f9",
-    panel: dark ? "#111b2e" : "#ffffff",
-    text: dark ? "#e8eef9" : "#172033",
-    muted: dark ? "#8fa0b8" : "#7b8798",
-    line: dark ? "#25334a" : "#e2e7ee",
-    blue: "#3b82f6", green: "#22c55e", orange: "#f59e0b", cyan: "#06b6d4"
-  };
+  const colors = window.ReportImageTheme.colors();
 
   const roundedRect = (x, y, width, height, radius, fill, stroke) => {
     context.beginPath();
@@ -1286,10 +1280,7 @@ async function exportDashboardImage() {
 
   context.fillStyle = colors.background;
   context.fillRect(0, 0, canvas.width, canvas.height);
-  text("LUFT · STATUS OPERACIONAL", 70, 68, 18, colors.blue, 800);
-  text("Visão geral", 70, 122, 40, colors.text, 800);
-  text("Arquivo: " + currentMetrics.fileName + " · " + fmt(currentMetrics.recordCount) + " registros", 70, 158, 16, colors.muted, 400);
-  text(new Date().toLocaleString("pt-BR"), 1730, 82, 15, colors.muted, 600, "right");
+  window.ReportImageTheme.header(context, 'Visão geral', 'Arquivo: '+currentMetrics.fileName+' · '+fmt(currentMetrics.recordCount)+' registros');
 
   const kpis = [
     ["TRIADOS", currentMetrics.triaged, colors.blue],
@@ -1303,12 +1294,12 @@ async function exportDashboardImage() {
     text(item[0], x + 25, 247, 14, colors.muted, 700);
     text(fmt(item[1]), x + 25, 315, 45, colors.text, 800);
     context.fillStyle = item[2];
-    context.fillRect(x, 343, 390, 7);
+    context.fillRect(x, 205, 390, 5);
   });
 
   const gradient = context.createLinearGradient(70, 0, 1730, 0);
-  gradient.addColorStop(0, "#17233a");
-  gradient.addColorStop(1, "#28477b");
+  gradient.addColorStop(0, "#06234c");
+  gradient.addColorStop(1, "#103d70");
   roundedRect(70, 385, 1660, 145, 18, gradient);
   text("ÚLTIMA EXPEDIÇÃO PROCESSADA", 110, 430, 14, "#a9bad5", 800);
   text(currentMetrics.lastDispatch ? currentMetrics.lastDispatch.carrier : "Não localizada", 110, 485, 29, "#ffffff", 800);
@@ -1366,12 +1357,8 @@ async function exportDetailPageImage(pageId) {
   const context = canvas.getContext("2d");
   if (!context) { setExportBusy(false); return showToast("O navegador não oferece suporte à exportação.", true); }
   const dark = document.body.dataset.theme === "dark";
-  const colors = {
-    background: dark ? "#0b1220" : "#f4f6f9", panel: dark ? "#111b2e" : "#ffffff",
-    text: dark ? "#e8eef9" : "#172033", muted: dark ? "#8fa0b8" : "#7b8798",
-    line: dark ? "#25334a" : "#dfe5ed", header: "#172235",
-    blue: "#3b82f6", cyan: "#06b6d4", green: dark ? "#275c38" : "#d8f1df",
-    yellow: dark ? "#a37210" : "#fde8a6", red: dark ? "#b83c34" : "#ffb0a5"
+  const colors = {...window.ReportImageTheme.colors(),
+    green: dark ? '#275c38' : '#d8f1df',yellow: dark ? '#a37210' : '#fde8a6',red: dark ? '#b83c34' : '#ffb0a5'
   };
   const rect = (x, y, width, height, fill, stroke, radius) => {
     context.beginPath(); context.roundRect(x, y, width, height, radius || 0);
@@ -1398,10 +1385,7 @@ async function exportDetailPageImage(pageId) {
     "page-relatorios": "Relatórios", "page-sla-profiles": "Perfis de prioridade SLA", "page-configuracoes": "Configurações"
   };
   context.fillStyle = colors.background; context.fillRect(0, 0, canvas.width, canvas.height);
-  drawText("LUFT · STATUS OPERACIONAL", 70, 55, 18, colors.blue, 800);
-  drawText(pageTitles[pageId] || "Status operacional", 70, 108, 38, colors.text, 800);
-  drawText(currentMetrics.fileName + " · " + fmt(currentMetrics.recordCount) + " registros", 70, 150, 15, colors.muted, 500);
-  drawText(new Date().toLocaleString("pt-BR"), canvas.width-70, 70, 15, colors.muted, 600, "right");
+  window.ReportImageTheme.header(context,pageTitles[pageId] || 'Status operacional',currentMetrics.fileName+' · '+fmt(currentMetrics.recordCount)+' registros');
 
   if (pageId === "page-conferencia-b2c" || pageId === "page-conferencia-b2b") {
     const showVolumes = pageId === "page-conferencia-b2b";
@@ -1525,13 +1509,13 @@ async function exportDetailPageImage(pageId) {
     });
   } else if (pageId === "page-transportadoras") {
     const flowGroups=pendingPickupFlowGroups(),upcoming=allUpcomingPickups(new Date()),next=upcoming[0],pending=next?pendingPickupFlow(next.carrier,flowGroups):[];
-    const gradient=context.createLinearGradient(70,0,1730,0);gradient.addColorStop(0,"#15243d");gradient.addColorStop(1,"#28558f");rect(70,190,1660,150,gradient,null,16);
+    const gradient=context.createLinearGradient(70,0,1730,0);gradient.addColorStop(0,"#06234c");gradient.addColorStop(1,"#103d70");rect(70,190,1660,150,gradient,null,16);
     drawText("PRÓXIMA TRANSPORTADORA",105,225,12,"#b8c7dc",800);drawText(next?fitText(next.carrier,900):"Nenhuma coleta cadastrada",105,270,28,"#fff",900);drawText(next?next.date.toLocaleString("pt-BR"):"Cadastre em Configurações",105,307,14,"#dbe7f7",600);drawText(next?humanDuration(next.stamp-Date.now()).replace("vence em ",""):"—",1680,255,28,"#fff",900,"right");drawText(next&&pending.length?fmt(pending.length)+" pedidos sem carga/coleta":"Nenhuma pendência crítica",1680,302,13,pending.length?"#fca5a5":"#86efac",800,"right");
     drawText("GRADE SEMANAL",70,390,16,colors.text,900);const names=Object.keys(pickupSchedules).sort((a,b)=>a.localeCompare(b,"pt-BR"));const startY=430,rowH=52;names.slice(0,11).forEach((carrier,index)=>{const y=startY+index*rowH;rect(70,y,1660,rowH-6,colors.panel,colors.line,8);drawText(fitText(carrier,370),90,y+23,11,colors.text,800);pickupDayNames.forEach((day,dayIndex)=>{drawText(fitText((pickupSchedules[carrier][String(dayIndex)]||[]).join(" / ")||"—",130),520+dayIndex*155,y+23,10,colors.muted,700,"center")});drawText(fmt(pendingPickupFlow(carrier,flowGroups).length)+" pend.",1705,y+23,10,colors.text,800,"right")});pickupDayNames.forEach((day,index)=>drawText(day.slice(0,3).toUpperCase(),520+index*155,410,9,colors.muted,800,"center"));
   } else if (pageId === "page-gemba") {
     const gemba=calculateGembaMetrics(currentMetrics),flow=gemba.flow;
     const flowTotal=flow.items.reduce((total,item)=>total+item.general,0),kpis=[["CLASSIF. ATIVAS",flow.items.length,colors.blue],["FLUXO GERAL",flowTotal,"#8b5cf6"],["PRODUZIDO B2C",gemba.production.b2c,DeliveryColors.b2c],["PRODUZIDO B2B",gemba.production.b2b,DeliveryColors.b2b]];
-    kpis.forEach((item,index)=>{const x=70+index*415;rect(x,195,395,125,colors.panel,colors.line,13);drawText(item[0],x+20,225,11,colors.muted,800);drawText(fmt(item[1]),x+20,275,31,colors.text,900);context.fillStyle=item[2];context.fillRect(x,313,395,7)});
+    kpis.forEach((item,index)=>{const x=70+index*415;rect(x,195,395,125,colors.panel,colors.line,13);drawText(item[0],x+20,225,11,colors.muted,800);drawText(fmt(item[1]),x+20,275,31,colors.text,900);context.fillStyle=item[2];context.fillRect(x,195,395,5)});
     [["B2C",gemba.forecast.b2c],["B2B",gemba.forecast.b2b]].forEach((item,index)=>{const x=70+index*835,data=item[1];rect(x,360,805,190,colors.panel,colors.line,13);drawText("FORECAST "+item[0],x+22,390,14,colors.text,900);[["META ORIGINAL",data.meta],["PRODUZIDO",data.produced],["COMPENSAÇÃO",data.compensation],["AJUSTADA",data.adjusted]].forEach((field,column)=>{const fx=x+22+column*190;drawText(field[0],fx,430,9,colors.muted,800);drawText(fmt(field[1]),fx,468,24,colors.text,900)});drawText(data.remaining?"Faltam produzir "+fmt(data.remaining):"✓ Meta atingida",x+22,520,13,data.remaining?"#ef4444":"#22c55e",800)});
     drawText("FLUXO OPERACIONAL",70,600,15,colors.text,900);if(flow.items.length)flow.items.forEach((item,index)=>{const column=index%2,row=Math.floor(index/2),x=70+column*835,y=625+row*57;rect(x,y,805,48,colors.panel,colors.line,9);drawText(item.label,x+18,y+28,11,colors.text,900);drawText("G "+fmt(item.general)+"  ·  I "+fmt(item.imported)+"  ·  F "+fmt(item.inFlow)+"  ·  A "+fmt(item.waiting),x+780,y+28,10,colors.blue,800,"right")});else drawText("Nenhuma classificação com pedidos nos status monitorados.",70,650,12,colors.muted,700);
     drawText("ABS: "+fmt(gembaAbs.length),70,950,15,colors.text,900);drawText("G: geral · I: importado · F: em fluxo · A: aguardando separação",1730,950,11,colors.muted,700,"right");
@@ -1635,7 +1619,7 @@ function closeExportMenu(){const control=$("#export-control"),button=$("#export-
 /* ===================== EXPORTAÇÕES ===================== */
 
 function exportCurrentPageImage() {
-  const localPage=document.querySelector(".page.active")?.id;if(["page-expedicao","page-produtividade"].includes(localPage)){closeExportMenu();return window.BrowserData.exportScreen(localPage)}
+  const localPage=document.querySelector(".page.active")?.id;if(["page-produtividade","page-importacoes"].includes(localPage)){closeExportMenu();return window.BrowserData.exportScreen(localPage)}
   if(document.querySelector(".page.active")?.id==="page-transportadoras"){closeExportMenu();return window.DailyExpedition.exportCsv();}
   if (!currentMetrics.fileName) return showToast("Importe um CSV antes de exportar a imagem.", true);
   closeExportMenu();setExportBusy(true);

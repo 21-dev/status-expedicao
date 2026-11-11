@@ -1,8 +1,39 @@
+/* Shared PNG appearance, matching operational-theme.css. */
+window.ReportImageTheme = {
+  colors() {
+    const dark = document.body.dataset.theme === 'dark';
+    return {background:dark?'#0b1220':'#f4f6f9',panel:dark?'#17283e':'#ffffff',
+      text:dark?'#e6edf7':'#172c48',muted:dark?'#b0bed0':'#64748b',
+      line:dark?'#34445b':'#dce5ed',header:'#082b57',blue:'#0064e8',
+      green:'#1f9a50',orange:'#edab00',cyan:'#00819b'};
+  },
+  header(ctx, title, subtitle, margin=70, top=30, height=145) {
+    const width=ctx.canvas.width-margin*2;
+    ctx.save();
+    const gradient=ctx.createLinearGradient(margin,top,margin+width,top+height);
+    gradient.addColorStop(0,'#06234c');gradient.addColorStop(1,'#103d70');
+    ctx.beginPath();ctx.roundRect(margin,top,width,height,12);ctx.fillStyle=gradient;ctx.fill();
+    ctx.beginPath();ctx.rect(margin+24,top,width-48,height);ctx.clip();
+    ctx.textAlign='left';ctx.textBaseline='alphabetic';
+    const text=(value,y,size,color,bold=false,maxWidth=width-56)=>{
+      ctx.font=(bold?'700':'400')+' '+size+'px "Segoe UI",Arial';ctx.fillStyle=color;
+      let result=String(value||'');while(result.length&&ctx.measureText(result).width>maxWidth)result=result.slice(0,-1);
+      if(result!==String(value||''))result=result.slice(0,-1)+'…';
+      ctx.fillText(result,margin+28,y);
+    };
+    text('LUFT · STATUS OPERACIONAL',top+32,17,'#dbeafe',true,width-370);
+    ctx.font='400 15px "Segoe UI",Arial';ctx.fillStyle='#dbeafe';ctx.textAlign='right';
+    ctx.fillText(new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),margin+width-28,top+32);
+    ctx.textAlign='left';text(title,top+82,34,'#ffffff',true);text(subtitle,top+116,16,'#dbeafe');
+    ctx.restore();
+  }
+};
 /* Canvas reports using the same visual language as the overview export. */
 window.exportStyledScreen = async function(page, name, download) {
+  if(page==='page-importacoes')return window.exportProductImports(name,download);
   await window.CarrierBrands.ready();
   const root=document.getElementById(page),dark=document.body.dataset.theme==='dark';
-  const c={background:dark?'#0b1220':'#f4f6f9',panel:dark?'#111b2e':'#ffffff',text:dark?'#e8eef9':'#172033',muted:dark?'#8fa0b8':'#7b8798',line:dark?'#25334a':'#e2e7ee',blue:'#3b82f6',green:'#22c55e',orange:'#f59e0b',cyan:'#06b6d4'};
+  const c=window.ReportImageTheme.colors();
   const canvas=document.createElement('canvas');canvas.width=1800;canvas.height=2400;
   const ctx=canvas.getContext('2d'),pages=[];let y=205;
   const text=(value,x,y,size=16,color=c.text,weight=500)=>{ctx.fillStyle=deliveryColor(value,color);ctx.font=weight+' '+size+'px "Segoe UI",Arial';ctx.textBaseline='alphabetic';ctx.fillText(String(value),window.CarrierBrands.draw(ctx,value,x,y,size,ctx.textAlign),y)};
@@ -11,14 +42,14 @@ window.exportStyledScreen = async function(page, name, download) {
   const clean=el=>el?.textContent.replace(/\s+/g,' ').trim()||'';
   const title=page==='page-produtividade'?'Produtividade':'Expedi\u00e7\u00e3o';
   const filters=[...root.querySelectorAll('input:not([type=file]),select')].filter(el=>getComputedStyle(el).display!=='none'&&(!el.closest('label')||getComputedStyle(el.closest('label')).display!=='none')).map(el=>{if(el.type==='checkbox')return el.checked?clean(el.parentElement):'';const label=el.closest('label')?.firstChild?.textContent?.trim()||el.getAttribute('aria-label')||'';return (label?label+': ':'')+(el.selectedOptions?.[0]?.textContent||el.value||'Todos')}).filter(Boolean).join('  |  ');
-  function header(){ctx.fillStyle=c.background;ctx.fillRect(0,0,1800,2400);text('LUFT \u00b7 STATUS OPERACIONAL',70,68,18,c.blue,800);text(title,70,122,40,c.text,800);text('Arquivo: '+(typeof currentMetrics!=='undefined'?currentMetrics.fileName:''),70,158,16,c.muted);ctx.textAlign='right';text(new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),1730,82,15,c.muted,600);ctx.textAlign='left';y=205}
+  function header(){ctx.fillStyle=c.background;ctx.fillRect(0,0,1800,2400);window.ReportImageTheme.header(ctx,title,'Arquivo: '+(typeof currentMetrics!=='undefined'?currentMetrics.fileName:''));y=205}
   function finish(){text('Dados processados localmente \u00b7 CD Extrema  |  '+(pages.length+1),70,y+40,14,c.muted);const output=document.createElement('canvas');output.width=1800;output.height=y+75;output.getContext('2d').drawImage(canvas,0,0);pages.push(output)}
   function space(height){if(y+height>2300){finish();header();return true}return false}
-  function banner(value){const lines=wrap(value,1580,16),height=42+lines.length*24;space(height);const gradient=ctx.createLinearGradient(70,0,1730,0);gradient.addColorStop(0,'#17233a');gradient.addColorStop(1,'#28477b');rect(70,y,1660,height,gradient,null);lines.forEach((line,i)=>text(line,100,y+33+i*24,16,'#ffffff',600));y+=height+24}
+  function banner(value){const lines=wrap(value,1580,16),height=42+lines.length*24;space(height);const gradient=ctx.createLinearGradient(70,0,1730,0);gradient.addColorStop(0,'#06234c');gradient.addColorStop(1,'#103d70');rect(70,y,1660,height,gradient,null);lines.forEach((line,i)=>text(line,100,y+33+i*24,16,'#ffffff',600));y+=height+24}
   header();banner(filters||'Vis\u00e3o operacional filtrada');
   const kpis=[...root.querySelectorAll('.prod-kpis article')];
-  if(kpis.length){space(170);kpis.forEach((card,i)=>{const x=70+i*425,accent=[c.blue,c.green,c.orange,c.cyan][i];rect(x,y,390,145);wrap(clean(card.querySelector('small')),340,14).forEach((line,j)=>text(line.toUpperCase(),x+25,y+35+j*18,14,c.muted,700));text(clean(card.querySelector('strong')),x+25,y+108,43,c.text,800);ctx.fillStyle=accent;ctx.fillRect(x,y+138,390,7)});y+=170}
-  function heading(title,subtitle){const lines=wrap(subtitle,1580,15),height=65+(subtitle?lines.length*22:0);space(height+90);rect(70,y,1660,height);const accent=deliveryColor(title,null);if(accent){ctx.fillStyle=accent;ctx.fillRect(70,y,5,height)}text(title,100,y+34,22,c.text,800);if(subtitle)lines.forEach((line,i)=>text(line,100,y+62+i*22,15,c.muted));y+=height+12}
+  if(kpis.length){space(170);kpis.forEach((card,i)=>{const x=70+i*425,accent=[c.blue,c.green,c.orange,c.cyan][i];rect(x,y,390,145);wrap(clean(card.querySelector('small')),340,14).forEach((line,j)=>text(line.toUpperCase(),x+25,y+35+j*18,14,c.muted,700));text(clean(card.querySelector('strong')),x+25,y+108,43,c.text,800);ctx.fillStyle=accent;ctx.fillRect(x,y,390,5)});y+=170}
+  function heading(title,subtitle){const lines=wrap(subtitle,1580,15),height=65+(subtitle?lines.length*22:0);space(height+90);rect(70,y,1660,height,c.header);const accent=deliveryColor(title,null);if(accent){ctx.fillStyle=accent;ctx.fillRect(70,y,5,height)}text(title,100,y+34,22,'#ffffff',800);if(subtitle)lines.forEach((line,i)=>text(line,100,y+62+i*22,15,'#dbeafe'));y+=height+12}
   if(page==='page-produtividade'){
     const block=[...root.querySelectorAll('.prod-block')].find(card=>clean(card.querySelector('h2'))==='Comparativo dos turnos');
     const groups=new Map();
@@ -46,7 +77,7 @@ window.exportStyledScreen = async function(page, name, download) {
     for(const table of (chart||card.classList.contains('shipping-loaded')?[]:card.querySelectorAll('table'))){
       const headers=[...table.querySelectorAll('thead th')].map(clean),n=headers.length;if(!n)continue;
       const width=1660/n;
-      function tableHeader(){const lines=headers.map(value=>wrap(value,width-24,14)),height=Math.max(...lines.map(v=>v.length))*20+24;rect(70,y,1660,height,dark?'#1c2b43':'#e8eef7',null);lines.forEach((values,i)=>values.forEach((value,j)=>text(value,82+i*width,y+24+j*20,14,c.text,700)));y+=height}
+      function tableHeader(){const lines=headers.map(value=>wrap(value,width-24,14)),height=Math.max(...lines.map(v=>v.length))*20+24;rect(70,y,1660,height,dark?'#20354c':'#e0f0f3',null);lines.forEach((values,i)=>values.forEach((value,j)=>text(value,82+i*width,y+24+j*20,14,c.text,700)));y+=height}
       tableHeader();
       for(const row of table.querySelectorAll('tbody tr')){
         const cells=[...row.cells].map(cell=>wrap(clean(cell),width-24,15)),height=Math.max(1,...cells.map(v=>v.length))*21+22;

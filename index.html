@@ -23,6 +23,8 @@
   <link rel="shortcut icon" href="favicon-luft-alpargatas.ico?v=20261030">
   <link rel="apple-touch-icon" sizes="180x180" href="favicon-luft-alpargatas-180.png?v=20261030">
   <link rel="stylesheet" href="brand.css?v=20261105-sync">
+  <link rel="stylesheet" href="product-imports.css?v=20261111">
+  <link rel="stylesheet" href="operational-theme.css?v=20261111-png-theme">
 </head>
 <body>
   <!--
@@ -38,11 +40,12 @@
       <p class="nav-title">OPERAÇÃO</p>
       <nav aria-label="Operação">
         <button type="button" class="nav-item active" data-page="dashboard"><span>▦</span>Visão geral</button>
-        <button type="button" class="nav-item" data-page="gemba"><span>◫</span>GEMBA</button>
+        <button type="button" class="nav-item" data-page="importacoes"><span aria-hidden="true">&#9638;</span>Importação de produtos</button>
+<button type="button" class="nav-item" data-page="gemba"><span>◫</span>GEMBA</button>
         <button type="button" class="nav-item" data-page="prioridades"><span>&#9671;</span>Prioridades B2C</button>
         <button type="button" class="nav-item" data-page="triados"><span>□</span>Triados <b id="nav-triados">0</b></button>
         <button type="button" class="nav-item" data-page="produtividade"><span>⌁</span>Produtividade</button>
-        <button type="button" class="nav-item" data-page="expedicao"><span>□</span>Expedição</button>
+        
         <button type="button" class="nav-item" data-page="pin"><span>⌖</span>Solicitação PIN</button>
         <button type="button" class="nav-item" data-page="conferencia-b2c"><span>◷</span>Conferência Doca B2C</button>
         <button type="button" class="nav-item" data-page="conferencia-b2b"><span>◷</span>Conferência B2B</button>
@@ -60,7 +63,12 @@
       </header>
 
       <div class="content">
-        <section class="page active" id="page-dashboard">
+                <section class="page" id="page-importacoes">
+          <div class="imports-banner"><div><h2>Status de importação de produtos</h2><p>Produtos por hora, tipo de entrega e marketplace</p><small id="imports-updated" role="status">Aguardando importação do CSV</small></div><div class="imports-filters"><label for="imports-market">Marketplace<select id="imports-market"><option value="">Todos os marketplaces</option><option value="shopee">Shopee</option><option value="todo">To Do</option><option value="bytedance">ByteDance</option><option value="outros">Outros / não informado</option></select></label><label for="imports-date">Data de importação<input type="date" id="imports-date"></label><button type="button" class="btn secondary" data-screen-export="png">Exportar PNG</button><button class="btn primary" type="button" id="imports-refresh">Atualizar CSV</button></div></div>
+          <p class="imports-notice" id="imports-notice"></p><div id="imports-content"></div>
+          <div class="imports-footer"><span>Indicadores atualizados automaticamente a cada importação do CSV.</span><span>□ Sem movimentação &nbsp; <b>■</b> Períodos com produtos</span></div>
+        </section>
+<section class="page active" id="page-dashboard">
           <div class="intro"><div><p>Acompanhamento da expedição pelo arquivo WMS</p><small id="file-info">Importe a exportação operacional para calcular os indicadores</small></div><div class="actions"><button type="button" class="btn secondary" id="copy-summary">▣ Copiar resumo</button><button type="button" class="btn secondary" id="export-summary">↓ Exportar CSV</button><label class="btn primary">＋ Importar CSV<input class="file-input" id="csv-input" type="file" accept=".csv,text/csv"></label></div></div>
 
           <div class="kpis">
@@ -108,12 +116,7 @@
         </section>
 
         <!-- SLA: os IDs abaixo são atualizados por renderSlaCentral(). -->
-        <section class="page" id="page-expedicao">
-          <div class="intro"><div><p>Expedição</p><small>Pedidos fora de carga e cargas aguardando finalização no WMS</small><small id="shipping-updated" class="shipping-updated" role="status">Aguardando upload do CSV.</small></div><div class="actions"><button type="button" class="btn primary" id="shipping-import">Atualizar CSV</button></div></div>
-          <div class="card priority-filters"><label>Pesquisar<input type="search" id="shipping-search" placeholder="Nota, pedido, carga ou transportadora"></label><label>Categoria<select id="shipping-category"><option value="">B2B e B2C</option><option value="b2c">B2C</option><option value="b2b">B2B</option></select></label><label>Transportadora<select id="shipping-carrier"><option value="">Todas as transportadoras</option></select></label><label>Dia da conferência<input type="date" id="shipping-date"></label></div>
-          <p class="priority-notice">Status considerados: Conferência concluída, Enviado para faturamento, Faturado ou Coleta iniciada. Pendentes de finalização: Processado diferente de 1 e sem data em Processado em. B2C: VENDA OMN CHANNEL, ALOM-SPASA-VENDA FUNCION. e SPASA-REM AMC; demais classificações: B2B. Dias e horas seguem Conferido em, no horário de Brasília. Cancelados e expedidos ficam fora da visão. Dados referentes à última importação do CSV.</p>
-          <div id="shipping-content"></div>
-        </section>
+        
         <section class="page" id="page-transportadoras"><div class="ex-intro"><div><span class="ex-kicker">LUFT · STATUS OPERACIONAL / EXPEDIÇÃO</span><h2>Controle diário de transportadoras</h2><p>Acompanhamento de chegada, entrada e saída do CD</p></div><div class="ex-header-actions"><button type="button" class="btn secondary" id="ex-export">↓ Exportar CSV</button><label class="ex-date">Data da operação<input id="ex-date" type="date" aria-label="Data operacional"></label><button type="button" class="btn secondary" id="pickup-go-settings">⚙ Cadastrar horários</button></div></div><div id="pickup-dashboard"></div></section>
         <section class="page" id="page-pin"><div class="intro"><div><p>Solicitações PIN</p><small>FL Brasil e MANAUS · pedidos separados por carga para os estados atendidos</small></div></div><div class="pin-groups" id="pin-table-page"></div></section>
         <section class="page conference-screen" id="page-conferencia-b2c"><div class="intro"><div><p>Conferência Doca · B2C</p><small>Série 17 · pedidos sem carga organizados por transportadora</small></div><div class="conference-overview" id="b2c-conference-summary"></div></div><article class="card conference-card"><div class="card-head"><div><h2>Conferência B2C por dia e hora</h2><p>Passe o cursor sobre uma célula para consultar os detalhes</p></div><span class="conference-format">Célula = pedidos</span></div><div class="matrix-wrap" id="b2c-table"></div></article></section>
@@ -164,11 +167,11 @@
   <div class="processing" id="processing"><div class="spinner"></div><strong id="processing-title">Preparando importação…</strong><small id="processing-detail">A última base válida continuará disponível até a conclusão.</small><div class="processing-steps" id="processing-steps" aria-live="polite"></div></div>
   <button type="button" class="sla-drawer-backdrop" id="sla-drawer-backdrop" aria-label="Fechar detalhamento"></button><aside class="sla-drawer" id="sla-drawer" aria-label="Detalhamento de pedidos"><div class="drawer-head"><div><small id="sla-drawer-kicker">DETALHAMENTO</small><h2 id="sla-drawer-title">Pedidos</h2><small id="sla-drawer-subtitle"></small></div><button type="button" class="drawer-close" id="sla-drawer-close">×</button></div><div class="drawer-body" id="sla-drawer-body"></div></aside>
   <div class="gemba-modal-backdrop" id="gemba-abs-modal" aria-hidden="true" inert><section class="gemba-modal" role="dialog" aria-modal="true" aria-labelledby="gemba-abs-title"><button class="auth-close" id="gemba-abs-close" type="button">×</button><small>GEMBA · ABS</small><h2 id="gemba-abs-title">Adicionar ABS</h2><form id="gemba-abs-form"><input type="hidden" id="gemba-abs-id"><label>Nome do colaborador<input type="text" id="gemba-abs-name" maxlength="120" autocomplete="off" required></label><label>Tipo<select id="gemba-abs-type" required><option value="">Selecione</option><option>Falta injustificada</option><option>Atestado</option><option>Declaração</option><option>Ausente</option></select></label><p class="auth-error" id="gemba-abs-error"></p><div class="gemba-modal-actions"><button class="btn secondary" id="gemba-abs-cancel" type="button">Cancelar</button><button class="btn primary" type="submit">Salvar</button></div></form></section></div>
-  <script src="carrier-brand-images.js"></script><script src="carrier-brands.js?v=20261105-sync"></script><script src="segment-colors.js"></script><script src="screen-image.js?v=20261105-sync"></script><script src="browser-data.js?v=20261105-sync"></script>
+  <script src="carrier-brand-images.js"></script><script src="carrier-brands.js?v=20261105-sync"></script><script src="segment-colors.js"></script><script src="screen-image.js?v=20261111-png-theme"></script><script src="browser-data.js?v=20261105-sync"></script>
     <script src="sla-engine.js"></script>
     <script src="expedition-engine.js"></script>
     <script src="expedition.js"></script>
-    <script src="priorities-lite.js"></script><script src="shipping-lite.js?v=20261030-channels"></script><script src="productivity-lite.js?v=20261105-sync"></script><script src="script.js?v=20261105-sync"></script>
+    <script src="product-imports.js?v=20261111"></script><script src="product-imports-export.js?v=20261111-png-theme"></script><script src="priorities-lite.js"></script><script src="productivity-lite.js?v=20261105-sync"></script><script src="script.js?v=20261111-png-theme"></script>
   <script>
     // Bloqueia também o acesso direto às antigas rotas administrativas.
     const liteNavigateOperationalPage = navigateToPage;

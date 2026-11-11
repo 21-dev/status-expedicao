@@ -20,6 +20,7 @@
       const dateLabel = key => key === 'Sem cadastro' ? key : key.split('-').reverse().join('/');
       let latest;
       const buckets = new Map();
+      let detailSla=false;
       let bucketId=0, detailRows=[], detailPage=0, detailMetric='products', trigger;
       function quantity(rows, metric, label, scope, suffix='') {
         const total=rows.reduce((sum,r)=>sum+(Number(r[metric])||0),0);
@@ -70,6 +71,7 @@
         openRecords(bucket.rows,bucket.label,button,bucket.metric);
       }
       function openRecords(rows,label,button,metric='products'){
+        detailSla=rows.some(r=>r.shipmentSla);document.querySelector('#priority-detail-modal thead tr').innerHTML=(detailSla?[...detailHeaders,'Prazo de expedição','Situação do prazo','Regra aplicada']:detailHeaders).map(s=>'<th>'+esc(s)+'</th>').join('');
         trigger=button;detailRows=rows;detailMetric=metric;detailPage=0;
         document.querySelector('#priority-detail-title').textContent=label;
         document.querySelector('#priority-detail-search').value='';
@@ -83,12 +85,12 @@
       const detailHeaders=['Nota fiscal','Remessa / Pedido','Importado em','Cadastrado em','Status','Qtde. Total de Produto','Qtde. de Produto','Volumes','Transportadora','Serviço','Marketplace','Carga','Onda','Destinatário','Classificação','Conferido em','Usuário da Pesagem'];
       function detailValues(r){
         const date=stamp=>stamp?new Date(stamp).toLocaleString('pt-BR',{hour12:false}):'';
-        return [r.invoice,r.order,date(r.actualImportedStamp),date(r.registeredStamp),r.status,r.products,r.skus,r.volumes,r.carrier,r.service,r.marketplace,r.load,r.wave||r.waveId,r.client,r.orderClassification,r.conferenceAt,r.weighingUser];
+        return [r.invoice,r.order,date(r.actualImportedStamp),date(r.registeredStamp),r.status,r.products,r.skus,r.volumes,r.carrier,r.service,r.marketplace,r.load,r.wave||r.waveId,r.client,r.orderClassification,r.conferenceAt,r.weighingUser].concat(detailSla?[r.shipmentSla?.due?new Date(r.shipmentSla.due).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'',r.shipmentSla?.overdue?'ATRASADO':r.shipmentSla?.due?'Dentro do prazo':'Sem prazo aplicável',r.shipmentSla?.reason||'']:[]);
       }
       function exportDetails(){
         const rows=filteredDetails();if(!rows.length)return;
         const cell=value=>'"'+String(value??'').replace(/"/g,'""')+'"';
-        const csv=[detailHeaders,...rows.map(detailValues)].map(row=>row.map(cell).join(';')).join('\r\n');
+        const csv=[detailSla?[...detailHeaders,'Prazo de expedição','Situação do prazo','Regra aplicada']:detailHeaders,...rows.map(detailValues)].map(row=>row.map(cell).join(';')).join('\r\n');
         const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));
         const link=document.createElement('a');link.href=url;
         const title=normalizeHeader(document.querySelector('#priority-detail-title').textContent).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,100);
